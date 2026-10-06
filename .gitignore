@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDEs
+.vscode/
+.idea/
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Uploaded files
+uploads/
+storage/
+
+# Node.js
+node_modules/
+.next/
+dist/
+build/
+
+# Temporary files
+tmp/
+temp/
+
+# Docker data
+docker-data/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
