@@ -226,8 +226,7 @@ Conceptual interface:
 
 ```python
 class JobSource:
-    def search(self, query):
-        ...
+    def search(self, query): ...
 ```
 
 Every provider should be converted into a common internal job format.
