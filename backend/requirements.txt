@@ -8,4 +8,4 @@ ruff==0.16.10
 httpx2
 sqlalchemy>=2.0,<3.0
 alembic>=1.14,<2.0
-psycopg[binary]>=3.2,<4.0
+psycopg2-binary>=2.9,<3.0
