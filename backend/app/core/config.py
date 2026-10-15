@@ -1,14 +1,13 @@
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "AI Job Agent"
     app_env: str = "development"
-    debug: bool = True
-
-    api_host: str = "0.0.0.0"
+    debug: bool = False
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
-
     database_url: str
 
     model_config = SettingsConfigDict(
