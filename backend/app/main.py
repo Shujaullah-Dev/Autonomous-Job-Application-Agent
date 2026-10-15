@@ -1,8 +1,10 @@
 
+from typing import Annotated
+
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -20,7 +22,7 @@ def health_check() -> dict[str, str]:
 
 @app.get("/health/db", tags=["Health"])
 def database_health_check(
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, str]:
     try:
         db.execute(text("SELECT 1"))
