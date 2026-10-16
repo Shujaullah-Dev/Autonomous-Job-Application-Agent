@@ -1,877 +1,113 @@
-# AI Job Agent — System Architecture
+# Architecture
 
-## 1. Purpose
+This document distinguishes the architecture that exists in the repository today from the target product design. The target architecture is aspirational; only the components listed under [Implemented system](#implemented-system) currently exist.
 
-The AI Job Agent is an AI-assisted system that helps a user discover relevant employment opportunities, evaluate job fit, prepare application materials, complete permitted application workflows, and track the application lifecycle.
-
-The system is designed around three principles:
-
-1. **Automation where safe and useful**
-2. **Human approval for consequential actions**
-3. **Modular architecture so components can be replaced independently**
-
----
-
-# 2. High-Level Architecture
+## Implemented system
 
 ```text
-                         ┌─────────────────────┐
-                         │       Frontend      │
-                         │   React / Next.js   │
-                         └──────────┬──────────┘
-                                    │
-                                    │ HTTP / REST
-                                    ▼
-                         ┌─────────────────────┐
-                         │       FastAPI       │
-                         │        API          │
-                         └──────────┬──────────┘
-                                    │
-              ┌─────────────────────┼─────────────────────┐
-              │                     │                     │
-              ▼                     ▼                     ▼
-       Resume Service          Job Service        Application Service
-              │                     │                     │
-              ▼                     ▼                     ▼
-        Resume Parser          Job Sources          Application
-              │                     │               Workflows
-              │                     │                     │
-              └──────────────┬──────┴─────────────────────┘
-                             │
-                             ▼
-                    ┌─────────────────────┐
-                    │      LangGraph      │
-                    │   Agent Workflow    │
-                    └──────────┬──────────┘
-                               │
-                ┌──────────────┼──────────────┐
-                │              │              │
-                ▼              ▼              ▼
-               LLM          Matching         Tools
-                │              │              │
-                │              │              │
-                └──────────────┼──────────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │     PostgreSQL      │
-                    │       Database      │
-                    └──────────┬──────────┘
-                               │
-                 ┌─────────────┼─────────────┐
-                 │             │             │
-                 ▼             ▼             ▼
-              Redis         Calendar     Notifications
-              Worker         Service        Service
-```
-
----
-
-# 3. Main Components
-
-## 3.1 Frontend
-
-The frontend provides the user interface for:
-
-- Account management
-- Resume upload
-- Resume/profile review
-- Job search
-- Job recommendations
-- Match explanations
-- Application material review
-- Application approval
-- Application tracking
-- Interview tracking
-- Deadline tracking
-- Notifications
-
-Initial frontend technology:
-
-- React
-- Next.js
-- TypeScript
-
-The frontend communicates with the backend through the FastAPI REST API.
-
----
-
-# 4. FastAPI Backend
-
-FastAPI is the main backend application.
-
-Responsibilities:
-
-- Authentication
-- Resume upload
-- Resume management
-- Job search
-- Job recommendations
-- Application management
-- Interview management
-- Notification management
-- Calendar operations
-- Agent workflow control
-
-Initial API structure:
-
-```text
-/api
-├── auth
-├── users
-├── resumes
-├── jobs
-├── matches
-├── applications
-├── interviews
-├── notifications
-└── health
-```
-
-Example endpoints:
-
-```text
-GET    /health
-
-POST   /api/resumes
-GET    /api/resumes
-GET    /api/resumes/{id}
-
-GET    /api/jobs
-GET    /api/jobs/{id}
-
-GET    /api/matches
-GET    /api/matches/{id}
-
-POST   /api/applications
-GET    /api/applications
-PATCH  /api/applications/{id}
-
-POST   /api/interviews
-GET    /api/interviews
-
-GET    /api/notifications
-```
-
-The exact API design may evolve during implementation.
-
----
-
-# 5. Resume Processing Pipeline
-
-The resume processing pipeline converts an uploaded document into structured candidate information.
-
-```text
-Resume File
+HTTP client
     │
     ▼
-File Validation
-    │
-    ▼
-Text Extraction
-    │
-    ▼
-Raw Resume Text
-    │
-    ▼
-LLM Structured Extraction
-    │
-    ▼
-Pydantic Validation
-    │
-    ▼
-Candidate Profile
+FastAPI application (backend/app/main.py)
+    ├── GET /health
+    ├── GET /health/db ──────────────┐
+    └── /api/v1/candidates           │
+           │                         │
+           ├── Pydantic schemas      │
+           ├── Candidate SQLAlchemy model
+           └── get_db dependency ────┴── SQLAlchemy Session / PostgreSQL
+
+SQLAlchemy models: CandidateProfile, Job
+Alembic: intended schema migrations (candidate migration history needs repair)
 ```
 
-The candidate profile may contain:
+The FastAPI app registers the candidate router and two health endpoints. The database session dependency creates one SQLAlchemy session per request and closes it when the request ends. Candidate endpoint handlers perform database reads/writes directly; there is no service or repository layer yet.
+
+### Implemented modules
+
+| Location | Responsibility |
+| --- | --- |
+| `backend/app/main.py` | Creates the FastAPI app, registers candidate routes, exposes health checks |
+| `backend/app/core/config.py` | Loads settings from environment and `.env`; `DATABASE_URL` is required |
+| `backend/app/api/routes/candidates.py` | Candidate create, fetch-by-ID, and partial-update operations |
+| `backend/app/schemas/candidate.py` | Validates candidate input and serializes responses |
+| `backend/app/models/candidate.py` | SQLAlchemy mapping for `candidate_profiles` |
+| `backend/app/models/job.py` | SQLAlchemy mapping for `jobs` |
+| `backend/app/db/base.py` | Shared SQLAlchemy declarative base |
+| `backend/app/db/session.py` | Engine, session factory, and FastAPI database dependency |
+| `backend/alembic/` | Alembic environment and versioned schema changes |
+
+### Request and persistence flow
+
+For a candidate request, FastAPI validates the body using the corresponding Pydantic schema and injects a database session via `get_db`. The route performs the query or mutation using the SQLAlchemy model, commits writes, and returns a response validated against `CandidateResponse`. Create and update operations roll back on `IntegrityError` and return HTTP 409. Missing profiles return 404. No table creation is performed at API startup.
+
+The health endpoint `/health` does not query the database. `/health/db` runs `SELECT 1` and returns 503 if a SQLAlchemy database error occurs.
+
+### Current data model
+
+`CandidateProfile` stores a UUID, full name, unique/indexed email, optional phone, location, professional summary and years of experience, plus timestamps. `Job` stores a database ID, title, company name, optional location/source/employment type, description, unique job URL, and timestamps.
+
+At present, there are no ORM relationships between these models. There is no candidate list/delete endpoint, no job endpoint, no application entity, and no resume entity.
+
+### Migration status
+
+Alembic loads metadata from `Base` and obtains the connection URL from application settings. The migration chain contains one jobs-table revision followed by two candidate-profile revisions that both create the same table. As a result, provisioning a fresh database by upgrading to the latest revision is expected to fail on the duplicate creation. Candidate migration definitions also do not fully reflect model-level length, uniqueness/index, and text column constraints. Repair and test the migration chain before using it as a reliable schema bootstrap.
+
+## Target product architecture
+
+The intended product is a modular, user-directed assistant. A potential future decomposition is:
 
 ```text
-Candidate
-├── Name
-├── Contact Information
-├── Summary
-├── Skills
-├── Work Experience
-├── Education
-├── Certifications
-├── Projects
-├── Languages
-├── Location
-├── Preferred Locations
-├── Preferred Roles
-├── Salary Preference
-└── Work Authorization
-```
-
-The raw extracted text should also be retained so that parsing can be improved later without requiring another upload.
-
----
-
-# 6. Job Search Architecture
-
-Job sources are abstracted behind a common interface.
-
-```text
-                ┌─────────────────┐
-                │   JobSource     │
-                │   Interface     │
-                └────────┬────────┘
-                         │
-          ┌──────────────┼──────────────┐
-          ▼              ▼              ▼
-       Source A       Source B       Source C
-```
-
-Conceptual interface:
-
-```python
-class JobSource:
-    def search(self, query): ...
-```
-
-Every provider should be converted into a common internal job format.
-
-Example normalized job:
-
-```text
-Job
-├── id
-├── title
-├── company
-├── location
-├── remote
-├── description
-├── requirements
-├── salary_min
-├── salary_max
-├── currency
-├── employment_type
-├── source
-├── source_url
-├── posted_at
-└── discovered_at
-```
-
-Only permitted APIs, feeds, pages, or user-authorized interfaces will be used.
-
----
-
-# 7. Job Deduplication
-
-The same job can appear on multiple sources.
-
-The system should attempt to identify duplicates using signals such as:
-
-- Source job ID
-- Application URL
-- Company
-- Job title
-- Location
-- Description similarity
-
-Example:
-
-```text
-Source A ──┐
-           │
-Source B ──┼──> Deduplication ──> Canonical Job
-           │
-Source C ──┘
-```
-
-The canonical job should retain information about its source listings where useful.
-
----
-
-# 8. Job Matching
-
-The matching system will evolve in stages.
-
-## Stage 1 — Rule-Based Matching
-
-Initial weighted score:
-
-```text
-Final Score =
-    0.40 × Skill Match
-  + 0.20 × Experience Match
-  + 0.15 × Title Match
-  + 0.10 × Location Match
-  + 0.10 × Preference Match
-  + 0.05 × Salary Match
-```
-
-The exact weights can later be tuned using evaluation data.
-
-## Stage 2 — Keyword Matching
-
-Compare:
-
-```text
-Resume Skills
-        ↓
-Job Requirements
-```
-
-Methods may include:
-
-- Exact matching
-- Normalized matching
-- Synonym matching
-- TF-IDF
-
-## Stage 3 — Semantic Matching
-
-Generate embeddings for:
-
-- Candidate profile
-- Job description
-- Job requirements
-
-Then calculate semantic similarity.
-
-```text
-Candidate Embedding
-        │
-        ▼
-   Vector Search
-        │
-        ▼
-Job Embedding
-```
-
-## Stage 4 — LLM Evaluation
-
-The LLM can provide a higher-level assessment:
-
-- Why the candidate matches
-- Missing skills
-- Experience gaps
-- Strengths
-- Potential concerns
-
-The LLM should not replace transparent scoring completely.
-
----
-
-# 9. LangGraph Agent Workflow
-
-LangGraph will orchestrate the multi-step AI workflow.
-
-Conceptual state:
-
-```text
-AgentState
-├── user
-├── resume
-├── candidate_profile
-├── jobs
-├── matches
-├── selected_job
-├── cover_letter
-├── application_answers
-├── approval_required
-├── application_status
-└── errors
-```
-
-Workflow:
-
-```text
-START
-  │
-  ▼
-Load Resume
-  │
-  ▼
-Parse Resume
-  │
-  ▼
-Search Jobs
-  │
-  ▼
-Normalize Jobs
-  │
-  ▼
-Deduplicate
-  │
-  ▼
-Score Jobs
-  │
-  ▼
-Filter / Rank
-  │
-  ▼
-Generate Materials
-  │
-  ▼
-Human Approval
-  │
-  ├── Reject ──> END
-  │
-  ▼
-Application Workflow
-  │
-  ▼
-Record Application
-  │
-  ▼
-Schedule Follow-up
-  │
-  ▼
-END
-```
-
-The workflow should be resumable and observable.
-
----
-
-# 10. Human-in-the-Loop
-
-Human approval is a core architectural requirement.
-
-The agent may:
-
-- Search
-- Analyze
-- Rank
-- Draft
-- Prepare
-- Recommend
-
-But consequential actions require explicit approval.
-
-```text
-AI prepares application
-          │
+Web client (not implemented)
+          │ REST
           ▼
-    User reviews
+FastAPI API
+   ├── Candidate / resume management
+   ├── Job discovery and normalization
+   ├── Matching and recommendations
+   ├── Application-material drafting
+   └── Application and interview tracking
           │
-     ┌────┴────┐
-     │         │
-   Reject    Approve
-     │         │
-     ▼         ▼
-    END    Application
-             Workflow
+          ├── PostgreSQL persistence
+          ├── Optional background worker / queue
+          ├── Optional LLM provider
+          └── Optional calendar / notification providers
 ```
 
-The system must not attempt to bypass:
+Do not interpret this diagram as deployed services. The repository currently has no frontend, worker, queue, LLM integration, job-source adapter, notification provider, or calendar integration.
 
-- CAPTCHA
-- Authentication
-- Anti-bot systems
-- Rate limits
-- Platform restrictions
-- Access controls
+### Intended user workflow
 
----
+1. A user supplies profile information and, eventually, a resume.
+2. The system extracts or records structured candidate information for user review.
+3. The system obtains jobs only from sources that permit the access method.
+4. Jobs are normalized and deduplicated before being stored or shown.
+5. Deterministic requirements and explainable scoring rank possible matches.
+6. Optional AI components can assist with semantic interpretation and drafting, with their output validated.
+7. The user reviews recommendations and generated materials.
+8. The system takes no consequential application action without explicit user approval.
+9. The user can track applications, interviews, deadlines, and reminders.
 
-# 11. Application Tracking
+Steps 1–9 describe the target, not current behavior.
 
-Application lifecycle:
+## Future component boundaries
 
-```text
-DISCOVERED
-    ↓
-MATCHED
-    ↓
-SELECTED
-    ↓
-PREPARING
-    ↓
-AWAITING_APPROVAL
-    ↓
-SUBMITTED
-    ↓
-    ├── INTERVIEW
-    │
-    ├── REJECTED
-    │
-    └── OFFER
-```
+When the product grows, keep source-specific integrations and provider-specific behavior behind replaceable interfaces. A future job-source adapter should normalize records into a shared job representation; matching should be testable independently of any LLM; and document generation should produce drafts for user review rather than submitting them automatically.
 
-Potential application fields:
+Introduce background work only when a concrete task is too slow for a request/response cycle. The current system has no Redis, queue, or worker. Likewise, authentication, authorization, file storage, audit history, and production observability have not yet been implemented and are prerequisites for handling real user data safely.
 
-```text
-Application
-├── id
-├── user_id
-├── job_id
-├── status
-├── applied_at
-├── application_url
-├── resume_version
-├── cover_letter
-├── application_answers
-├── notes
-├── recruiter
-├── next_action
-└── created_at
-```
+## Safety and reliability principles
 
----
+- Keep secrets in local environment configuration; do not commit `.env`.
+- Validate all external and user-provided data.
+- Use authorized job sources and honor terms, rate limits, and access controls.
+- Do not bypass CAPTCHA, authentication, anti-bot protections, or platform restrictions.
+- Require explicit user approval before submitting an application or taking another consequential action.
+- Prefer deterministic and explainable logic for validation, scoring, deduplication, and state transitions.
+- Test any future AI features for unsupported claims and malformed output.
 
-# 12. Interview and Deadline Management
+## Testing strategy
 
-Important events include:
+The existing suite tests health responses using a mocked database and asserts selected `Job` model metadata. It does not currently provide integration coverage of candidate persistence or migrations.
 
-- Application deadline
-- Online assessment
-- Recruiter call
-- Technical interview
-- Behavioral interview
-- Final interview
-- Follow-up
-- Offer expiration
-
-Calendar reminders may be scheduled at:
-
-```text
-7 days before
-24 hours before
-1 hour before
-After interview
-```
-
-The exact reminder schedule should be configurable.
-
----
-
-# 13. Notification System
-
-The notification system should be abstracted so different providers can be used.
-
-```text
-NotificationService
-       │
-       ├── Email
-       ├── Push
-       └── SMS
-```
-
-For the free development environment, email can initially be mocked or logged locally.
-
-Production providers can be added later.
-
----
-
-# 14. Database Architecture
-
-PostgreSQL will be the primary database.
-
-Initial entities:
-
-```text
-User
-Resume
-CandidateProfile
-Job
-JobMatch
-Application
-Interview
-Notification
-```
-
-Relationships:
-
-```text
-User
- │
- ├── Resume
- │     └── CandidateProfile
- │
- ├── JobMatch ─── Job
- │
- ├── Application ─── Job
- │
- ├── Interview ─── Application
- │
- └── Notification
-```
-
-The schema will be implemented incrementally beginning on Day 3.
-
----
-
-# 15. Background Processing
-
-Long-running operations should not block API requests.
-
-Examples:
-
-- Job searches
-- Resume processing
-- Embedding generation
-- Large-scale matching
-- Notification delivery
-- Calendar synchronization
-
-Architecture:
-
-```text
-FastAPI
-   │
-   ▼
-Redis Queue
-   │
-   ▼
-Worker
-   │
-   ├── Resume Processing
-   ├── Job Search
-   ├── Matching
-   └── Notifications
-```
-
-The first implementation will prioritize simplicity. We will introduce background workers when they become necessary.
-
----
-
-# 16. Security
-
-Security requirements include:
-
-- Secrets stored in environment variables
-- No API keys committed to Git
-- Input validation
-- File type validation
-- File size limits
-- Authentication
-- Authorization
-- Database access controls
-- Secure logging
-- Sensitive data protection
-- Rate limiting where appropriate
-
-Example:
-
-```text
-.env
-.env.example
-```
-
-`.env` must never be committed.
-
----
-
-# 17. Observability
-
-The system should eventually provide:
-
-- Structured logs
-- Request IDs
-- Agent workflow logs
-- Job source errors
-- Application workflow status
-- AI generation failures
-- Background worker failures
-
-This will make debugging the agent much easier.
-
----
-
-# 18. Testing Architecture
-
-Testing will exist at three levels.
-
-## Unit Tests
-
-Test individual components:
-
-```text
-Resume Parser
-Matcher
-Scoring
-Deduplication
-Validators
-Services
-```
-
-## Integration Tests
-
-Test components together:
-
-```text
-API → Database
-API → Resume Parser
-Job Source → Normalization
-Matcher → Database
-```
-
-## End-to-End Tests
-
-Test the complete workflow:
-
-```text
-Upload Resume
-      ↓
-Parse
-      ↓
-Search Jobs
-      ↓
-Match
-      ↓
-Generate Materials
-      ↓
-Approve
-      ↓
-Track Application
-```
-
----
-
-# 19. AI Evaluation
-
-The AI system must be evaluated independently from normal software tests.
-
-Initial evaluation dataset:
-
-```text
-10 resumes
-50 jobs
-```
-
-Evaluation metrics include:
-
-### Resume Extraction
-
-- Field accuracy
-- Missing fields
-- Invalid structured output
-
-### Job Matching
-
-- Precision@5
-- Recall@10
-- Ranking quality
-- Explanation quality
-
-### Generation
-
-- Relevance
-- Accuracy
-- Personalization
-- Unsupported claims
-- Grammar
-
-### Automation
-
-- Workflow success rate
-- Failure rate
-- Human intervention rate
-- Duplicate applications
-
----
-
-# 20. Deployment Architecture
-
-Development:
-
-```text
-Docker Compose
-│
-├── frontend
-├── api
-├── worker
-├── postgres
-└── redis
-```
-
-Future production architecture can evolve independently.
-
-The first objective is to make the complete system work locally before introducing cloud infrastructure.
-
----
-
-# 21. Development Principles
-
-The project will follow these principles:
-
-### Keep components modular
-
-A job source, LLM provider, notification provider, or calendar provider should be replaceable.
-
-### Prefer deterministic logic where possible
-
-Use normal software logic for:
-
-- Validation
-- Scoring
-- Deduplication
-- Status transitions
-- Permissions
-
-Use AI where it adds value:
-
-- Extraction
-- Semantic understanding
-- Generation
-- Reasoning
-- Recommendations
-
-### Build vertical slices
-
-Instead of building every subsystem independently, periodically connect components into a complete working flow.
-
-### Free-first
-
-Use local/open-source tools whenever practical during development.
-
-### Human approval
-
-Never automate consequential actions without explicit approval.
-
----
-
-# 22. Target End State
-
-The final MVP should support this complete flow:
-
-```text
-User
- │
- ▼
-Upload Resume
- │
- ▼
-AI extracts candidate profile
- │
- ▼
-Search permitted job sources
- │
- ▼
-Normalize + deduplicate jobs
- │
- ▼
-Match and rank jobs
- │
- ▼
-User reviews recommendations
- │
- ▼
-Select job
- │
- ▼
-AI generates tailored materials
- │
- ▼
-User reviews
- │
- ▼
-User approves
- │
- ▼
-Permitted application workflow
- │
- ▼
-Application recorded
- │
- ▼
-Interview/deadline tracking
- │
- ▼
-Calendar + notifications
-```
-
-This architecture is intentionally modular so that additional job sources, LLM providers, matching algorithms, notification providers, and application workflows can be added later without redesigning the entire system.
+As implementation expands, add focused unit tests for schemas and services, database integration tests for persistence and migrations, and end-to-end tests for complete user-visible workflows. AI evaluation datasets and ranking/generation quality metrics are future work.
