@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.routes.candidates import router as candidates_router
 from app.core.config import settings
 from app.db.session import get_db
 
@@ -14,6 +15,7 @@ app = FastAPI(
     debug=settings.debug,
 )
 
+app.include_router(candidates_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:
