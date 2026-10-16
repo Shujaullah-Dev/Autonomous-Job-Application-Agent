@@ -5,6 +5,8 @@ from app import models  # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
 from sqlalchemy import engine_from_config, pool
+from app.models.candidate import CandidateProfile
+from app.models.skill import CandidateSkill
 
 config = context.config
 
