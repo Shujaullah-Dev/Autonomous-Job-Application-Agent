@@ -1,14 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
 from app.db.session import get_db
 from app.models.candidate import CandidateProfile
 from app.models.skill import CandidateSkill
 from app.schemas.skill import SkillCreate, SkillResponse, SkillUpdate
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 router = APIRouter(
     prefix="/api/v1/candidates/{candidate_id}/skills",
