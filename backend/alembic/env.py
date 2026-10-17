@@ -4,6 +4,10 @@ from alembic import context
 from app import models  # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
+from app.models.candidate import CandidateProfile  # noqa: F401
+from app.models.education import Education  # noqa: F401
+from app.models.experience import WorkExperience  # noqa: F401
+from app.models.skill import CandidateSkill  # noqa: F401
 from sqlalchemy import engine_from_config, pool
 
 config = context.config

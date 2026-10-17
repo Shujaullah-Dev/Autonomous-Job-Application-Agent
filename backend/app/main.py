@@ -7,6 +7,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.routes.candidates import router as candidates_router
+from app.api.routes.education import router as education_router
+from app.api.routes.experience import router as experience_router
+from app.api.routes.skills import router as skills_router
 from app.core.config import settings
 from app.db.session import get_db
 
@@ -16,6 +19,9 @@ app = FastAPI(
 )
 
 app.include_router(candidates_router)
+app.include_router(skills_router)
+app.include_router(experience_router)
+app.include_router(education_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:
