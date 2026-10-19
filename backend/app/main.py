@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.api.routes.candidates import router as candidates_router
 from app.api.routes.education import router as education_router
 from app.api.routes.experience import router as experience_router
-from app.api.routes.skills import router as skills_router
 from app.api.routes.resumes import router as resumes_router
+from app.api.routes.skills import router as skills_router
 from app.core.config import settings
 from app.db.session import get_db
 
