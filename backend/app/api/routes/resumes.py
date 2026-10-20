@@ -4,6 +4,8 @@ import uuid
 from app.db.session import get_db
 from app.models.candidate import CandidateProfile
 from app.schemas.resume import ResumeUploadResponse
+from app.schemas.resume_analysis import ResumeAnalysisResponse
+from app.services.resume_analysis import analyze_resume_text
 from app.services.resume_parser import (
     ResumeParsingError,
     extract_resume_text,
@@ -19,7 +21,6 @@ from fastapi import (
     File,
     HTTPException,
     UploadFile,
-    status,
 )
 from sqlalchemy.orm import Session
 
@@ -29,16 +30,16 @@ router = APIRouter(
 )
 
 
+
 @router.post(
-    "/{candidate_id}/resume",
-    response_model=ResumeUploadResponse,
-    status_code=status.HTTP_200_OK,
+    "/{candidate_id}/resume/preview",
+    response_model=ResumeAnalysisResponse,
 )
-async def upload_resume(
+async def preview_resume_analysis(
     candidate_id: uuid.UUID,
-    file: UploadFile = File(...), # noqa: B008
-    db: Session = Depends(get_db), # noqa: B008
-) -> ResumeUploadResponse:
+    file: UploadFile = File(...),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+) -> ResumeAnalysisResponse:
 
     candidate = db.get(CandidateProfile, candidate_id)
 
@@ -62,6 +63,11 @@ async def upload_resume(
         extracted_text = extract_resume_text(
             file_content=file_content,
             file_type=file_type,
+        )
+
+        return analyze_resume_text(
+            candidate_id=candidate_id,
+            text=extracted_text,
         )
 
     except ResumeValidationError as exc:
