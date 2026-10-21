@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.routes.candidates import router as candidates_router
 from app.api.routes.education import router as education_router
 from app.api.routes.experience import router as experience_router
+from app.api.routes.resume_imports import router as resume_imports_router
 from app.api.routes.resumes import router as resumes_router
 from app.api.routes.skills import router as skills_router
 from app.core.config import settings
@@ -24,6 +25,7 @@ app.include_router(skills_router)
 app.include_router(experience_router)
 app.include_router(education_router)
 app.include_router(resumes_router)
+app.include_router(resume_imports_router)
 
 
 @app.get("/health", tags=["Health"])
