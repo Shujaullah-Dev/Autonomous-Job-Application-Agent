@@ -1,26 +1,48 @@
+
 import re
+
 from app.schemas.resume_analysis import ResumeContact
 
-EMAIL_PATTERN = re.compile(r'(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w.-])')
-PHONE_PATTERN = re.compile(r'(?<![\w\d])(?:\+92|0092|0)[\s().-]*3\d{2}[\s().-]*\d{7}(?!\d)')
-LABELED_PHONE = re.compile(r'^\s*(?:phone|mobile|contact|tel)\s*:', re.I)
+EMAIL_PATTERN = re.compile(
+    r"(?<![\w.+-])"
+    r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}"
+    r"(?![\w.-])"
+)
+
+PHONE_PATTERN = re.compile(
+    r"(?<!\w)"
+    r"(?:\+?\d[\d\s().-]{7,}\d)"
+    r"(?!\w)"
+)
 
 
 def extract_contact(text: str) -> ResumeContact:
     email_match = EMAIL_PATTERN.search(text)
+
+    email = (
+        email_match.group(0)
+        if email_match
+        else None
+    )
+
     phone = None
-    lines = text.splitlines()
-    for line in lines:
-        if LABELED_PHONE.match(line):
-            match = PHONE_PATTERN.search(line)
-            if match:
-                phone = match.group(0).strip()
-                break
-    if phone is None:
-        # Restrict unlabeled extraction to the resume header, avoiding project metrics.
-        for line in lines[:12]:
-            match = PHONE_PATTERN.search(line)
-            if match:
-                phone = match.group(0).strip()
-                break
-    return ResumeContact(email=email_match.group(0) if email_match else None, phone=phone)
+
+    # Prefer explicitly labeled phone fields.
+    for line in text.splitlines():
+        if not re.match(
+            r"^\s*(phone|mobile|contact)\s*:",
+            line,
+            flags=re.IGNORECASE,
+        ):
+            continue
+
+        match = PHONE_PATTERN.search(line)
+
+        if match:
+            phone = match.group(0).strip()
+            break
+
+    return ResumeContact(
+        email=email,
+        phone=phone,
+    )
