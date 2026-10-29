@@ -1,10 +1,20 @@
 
 import uuid
 
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+)
+from sqlalchemy.orm import Session
+
 from app.db.session import get_db
 from app.models.candidate import CandidateProfile
-from app.schemas.resume import ResumeUploadResponse
-from app.schemas.resume_analysis import ResumeAnalysisResponse
+from app.schemas.resume_analysis import (
+    ResumeAnalysisResponse,
+)
 from app.services.resume_analysis import analyze_resume_text
 from app.services.resume_parser import (
     ResumeParsingError,
@@ -15,14 +25,7 @@ from app.services.resume_validation import (
     ResumeValidationError,
     validate_resume,
 )
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    HTTPException,
-    UploadFile,
-)
-from sqlalchemy.orm import Session
+
 
 router = APIRouter(
     prefix="/api/v1/candidates",
@@ -30,15 +33,19 @@ router = APIRouter(
 )
 
 
-
 @router.post(
     "/{candidate_id}/resume/preview",
     response_model=ResumeAnalysisResponse,
+    responses={
+        404: {"description": "Candidate not found"},
+        413: {"description": "Resume too large"},
+        422: {"description": "Invalid or unreadable resume"},
+    },
 )
 async def preview_resume_analysis(
     candidate_id: uuid.UUID,
-    file: UploadFile = File(...),  # noqa: B008
-    db: Session = Depends(get_db),  # noqa: B008
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
 ) -> ResumeAnalysisResponse:
 
     candidate = db.get(CandidateProfile, candidate_id)
@@ -50,24 +57,23 @@ async def preview_resume_analysis(
         )
 
     try:
-        file_content = await file.read(
-            MAX_RESUME_SIZE + 1
-        )
+        content = await file.read(MAX_RESUME_SIZE + 1)
 
         file_type = validate_resume(
             filename=file.filename,
             content_type=file.content_type,
-            file_content=file_content,
+            file_content=content,
         )
 
-        extracted_text = extract_resume_text(
-            file_content=file_content,
+        text = extract_resume_text(
+            file_content=content,
             file_type=file_type,
         )
 
+        # Groq-first orchestration with automatic fallback.
         return analyze_resume_text(
             candidate_id=candidate_id,
-            text=extracted_text,
+            text=text,
         )
 
     except ResumeValidationError as exc:
@@ -84,12 +90,3 @@ async def preview_resume_analysis(
 
     finally:
         await file.close()
-
-    return ResumeUploadResponse(
-        candidate_id=candidate_id,
-        filename=file.filename or "",
-        file_type=file_type,
-        extracted_text=extracted_text,
-        character_count=len(extracted_text),
-        message="Resume text extracted successfully",
-    )
