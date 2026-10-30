@@ -1,14 +1,6 @@
 
 import uuid
-
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    HTTPException,
-    UploadFile,
-)
-from sqlalchemy.orm import Session
+from typing import Annotated
 
 from app.db.session import get_db
 from app.models.candidate import CandidateProfile
@@ -25,7 +17,14 @@ from app.services.resume_validation import (
     ResumeValidationError,
     validate_resume,
 )
-
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+)
+from sqlalchemy.orm import Session
 
 router = APIRouter(
     prefix="/api/v1/candidates",
@@ -44,7 +43,7 @@ router = APIRouter(
 )
 async def preview_resume_analysis(
     candidate_id: uuid.UUID,
-    file: UploadFile = File(...),
+    file: Annotated[UploadFile, File(...)],
     db: Session = Depends(get_db),
 ) -> ResumeAnalysisResponse:
 

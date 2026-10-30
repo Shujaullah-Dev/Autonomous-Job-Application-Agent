@@ -7,7 +7,6 @@ from app.schemas.resume_analysis import (
     ResumeExperience,
 )
 
-
 HEADINGS = {
     "experience": "experience",
     "work experience": "experience",

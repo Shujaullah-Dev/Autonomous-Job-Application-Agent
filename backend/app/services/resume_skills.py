@@ -10,7 +10,8 @@ SKILL_CATALOG = {
     'Git': ['git'], 'GitHub': ['github'], 'AWS': ['aws'], 'Azure': ['azure'],
     'LangChain': ['langchain'], 'LangGraph': ['langgraph'],
     'Machine Learning': ['machine learning'], 'Deep Learning': ['deep learning'],
-    'Data Analysis': ['data analysis'], 'REST API': ['rest api', 'rest apis', 'restful api'],
+    'Data Analysis': ['data analysis'],
+    'REST API': ['rest api', 'rest apis', 'restful api'],
     'WebSocket': ['websocket', 'websockets'], 'PyTorch': ['pytorch'],
     'TensorFlow': ['tensorflow'], 'Hugging Face': ['hugging face'],
     'sentence-transformers': ['sentence-transformers'], 'T5': ['t5'],
@@ -27,7 +28,15 @@ SKILL_CATALOG = {
 def extract_skills(text: str) -> list[str]:
     found = []
     for name, aliases in SKILL_CATALOG.items():
-        if any(re.search(r'(?<![A-Za-z0-9])' + re.escape(alias) + r'(?![A-Za-z0-9])', text, re.I)
-               for alias in aliases):
+        if any(
+            re.search(
+                r'(?<![A-Za-z0-9])'
+                + re.escape(alias)
+                + r'(?![A-Za-z0-9])',
+                text,
+                re.I,
+            )
+            for alias in aliases
+        ):
             found.append(name)
     return found
