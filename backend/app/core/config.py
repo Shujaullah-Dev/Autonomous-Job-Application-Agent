@@ -1,13 +1,8 @@
-
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-# Resolve .env from the project root, not the
-# directory where Python was launched.
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
 
 class Settings(BaseSettings):
     app_name: str = "AI Job Agent"
@@ -18,10 +13,10 @@ class Settings(BaseSettings):
 
     database_url: str
 
-    # Groq AI
+    # Groq
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-20b"
-    resume_ai_enabled: bool = True
+    resume_ai_enabled: bool = False
     groq_timeout_seconds: float = 30.0
     groq_max_chars: int = 20000
 
@@ -30,6 +25,5 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
 
 settings = Settings()

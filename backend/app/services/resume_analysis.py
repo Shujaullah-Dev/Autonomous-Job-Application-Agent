@@ -1,4 +1,3 @@
-
 import logging
 import uuid
 
@@ -20,13 +19,13 @@ from app.services.resume_skills import extract_skills
 logger = logging.getLogger(__name__)
 
 
-def local_parse(text: str):
-    return (
-        extract_contact(text),
-        extract_experiences(text),
-        extract_educations(text),
-        extract_skills(text),
-    )
+def parse_locally(text: str):
+    contact = extract_contact(text)
+    skills = extract_skills(text)
+    experiences = extract_experiences(text)
+    educations = extract_educations(text)
+
+    return contact, experiences, educations, skills
 
 
 def analyze_resume_text(
@@ -34,56 +33,42 @@ def analyze_resume_text(
     text: str,
 ) -> ResumeAnalysisResponse:
 
+    warnings = [
+        "Review all extracted information before saving"
+    ]
+
     parser_used = "local"
     fallback_used = False
-    warnings = [
-        "Review extracted details before saving"
-    ]
 
     if settings.resume_ai_enabled:
         try:
             (
-                ai_contact,
+                contact,
                 experiences,
                 educations,
                 skills,
                 issues,
             ) = extract_groq(text)
 
-            # Preserve deterministic contact extraction where
-            # AI did not recognize an explicitly present value.
-            local_contact = extract_contact(text)
-
-            contact = ai_contact.model_copy(
-                update={
-                    "email": (
-                        ai_contact.email
-                        or local_contact.email
-                    ),
-                    "phone": (
-                        ai_contact.phone
-                        or local_contact.phone
-                    ),
-                }
-            )
-
             warnings.extend(issues)
             parser_used = "groq"
 
-            logger.info(
-                "Resume parsed using Groq: "
-                "experiences=%d educations=%d skills=%d",
-                len(experiences),
-                len(educations),
-                len(skills),
+            # Fill only missing contact fields using
+            # locally extracted source information.
+            local_contact = extract_contact(text)
+
+            contact = contact.model_copy(
+                update={
+                    "email": contact.email or local_contact.email,
+                    "phone": contact.phone or local_contact.phone,
+                }
             )
 
         except GroqUnavailable as exc:
             fallback_used = True
-            parser_used = "local"
 
             logger.warning(
-                "Groq unavailable: %s; using local parser",
+                "Groq unavailable (%s). Local fallback activated.",
                 exc.reason,
             )
 
@@ -92,13 +77,12 @@ def analyze_resume_text(
                 experiences,
                 educations,
                 skills,
-            ) = local_parse(text)
+            ) = parse_locally(text)
 
             warnings.append(
-                "Groq unavailable: "
-                f"{exc.reason}. "
-                "Local fallback used; extraction "
-                "may be incomplete."
+                f"Groq unavailable ({exc.reason}); "
+                "local parser used. "
+                "Results may be incomplete."
             )
 
     else:
@@ -107,10 +91,15 @@ def analyze_resume_text(
             experiences,
             educations,
             skills,
-        ) = local_parse(text)
+        ) = parse_locally(text)
 
         warnings.append(
-            "AI parsing disabled; local parser used"
+            "Groq disabled; local parser used"
+        )
+
+    if not skills:
+        warnings.append(
+            "No supported technical skills recognized"
         )
 
     if not experiences:
@@ -126,9 +115,9 @@ def analyze_resume_text(
     return ResumeAnalysisResponse(
         candidate_id=candidate_id,
         contact=contact,
+        skills=skills,
         experiences=experiences,
         educations=educations,
-        skills=skills,
         parser_used=parser_used,
         fallback_used=fallback_used,
         warnings=warnings,

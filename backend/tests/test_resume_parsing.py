@@ -1,8 +1,9 @@
 from datetime import date
 from pathlib import Path
+
 from app.services.resume_contact import extract_contact
 from app.services.resume_parser import extract_resume_text
-from app.services.resume_sections import extract_experiences, extract_educations
+from app.services.resume_sections import extract_educations, extract_experiences
 from app.services.resume_skills import extract_skills
 
 REALISTIC = '''Alex Mordan

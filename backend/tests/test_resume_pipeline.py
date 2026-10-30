@@ -4,7 +4,7 @@ from datetime import date
 from unittest.mock import patch
 
 import httpx
-
+import pytest
 from app.schemas.resume_analysis import (
     ResumeContact,
     ResumeEducation,
@@ -14,13 +14,12 @@ from app.services.resume_analysis import analyze_resume_text
 from app.services.resume_groq import (
     GroqUnavailable,
     extract_groq,
-    parsed_date,
+    parse_date,
 )
 from app.services.resume_sections import (
     extract_educations,
     extract_experiences,
 )
-
 
 SAMPLE = """
 WORK EXPERIENCE
@@ -52,9 +51,9 @@ def test_local_education_without_dates():
 
 
 def test_year_only_does_not_invent_month():
-    assert parsed_date("2022") is None
-    assert parsed_date("Present") is None
-    assert parsed_date("Jun 2024") == date(2024, 6, 1)
+    assert parse_date("2022") is None
+    assert parse_date("Present") is None
+    assert parse_date("Jun 2024") == date(2024, 6, 1)
 
 
 def test_empty_sections_remain_empty():
@@ -182,9 +181,8 @@ def test_real_http_429_handled(monkeypatch):
         fake_post,
     )
 
-    try:
+    with pytest.raises(GroqUnavailable) as exc_info:
         extract_groq(SAMPLE)
-        assert False, "Expected GroqUnavailable"
-    except GroqUnavailable as exc:
-        assert exc.reason == "rate_limit"
-        assert exc.status_code == 429
+
+    assert exc_info.value.reason == "rate_limit"
+    assert exc_info.value.status_code == 429
