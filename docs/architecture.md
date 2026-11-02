@@ -1,113 +1,79 @@
 # Architecture
 
-This document distinguishes the architecture that exists in the repository today from the target product design. The target architecture is aspirational; only the components listed under [Implemented system](#implemented-system) currently exist.
+This document separates the implemented backend from the product's future direction.
 
-## Implemented system
+## Current system
 
 ```text
 HTTP client
     │
     ▼
-FastAPI application (backend/app/main.py)
-    ├── GET /health
-    ├── GET /health/db ──────────────┐
-    └── /api/v1/candidates           │
-           │                         │
-           ├── Pydantic schemas      │
-           ├── Candidate SQLAlchemy model
-           └── get_db dependency ────┴── SQLAlchemy Session / PostgreSQL
-
-SQLAlchemy models: CandidateProfile, Job
-Alembic: intended schema migrations (candidate migration history needs repair)
+FastAPI (backend/app/main.py)
+    ├── Health checks
+    └── /api/v1/candidates
+          ├── Candidate profile routes
+          ├── Skills, experience, and education routes
+          ├── Resume preview ── PDF/DOCX extraction ── local parser
+          │                                      └──── optional Groq extraction
+          └── Reviewed resume import
+                         │
+                         ▼
+                 SQLAlchemy sessions ── PostgreSQL
 ```
 
-The FastAPI app registers the candidate router and two health endpoints. The database session dependency creates one SQLAlchemy session per request and closes it when the request ends. Candidate endpoint handlers perform database reads/writes directly; there is no service or repository layer yet.
+The app registers the candidate, skill, experience, education, and resume routers. Each request that accesses the database receives a synchronous SQLAlchemy session through `get_db`; the session is closed after the request. Routes and services perform database operations directly; there is no separate repository layer. Alembic migrations are managed separately from application startup.
 
-### Implemented modules
+### Main modules
 
 | Location | Responsibility |
 | --- | --- |
-| `backend/app/main.py` | Creates the FastAPI app, registers candidate routes, exposes health checks |
-| `backend/app/core/config.py` | Loads settings from environment and `.env`; `DATABASE_URL` is required |
-| `backend/app/api/routes/candidates.py` | Candidate create, fetch-by-ID, and partial-update operations |
-| `backend/app/schemas/candidate.py` | Validates candidate input and serializes responses |
-| `backend/app/models/candidate.py` | SQLAlchemy mapping for `candidate_profiles` |
-| `backend/app/models/job.py` | SQLAlchemy mapping for `jobs` |
-| `backend/app/db/base.py` | Shared SQLAlchemy declarative base |
-| `backend/app/db/session.py` | Engine, session factory, and FastAPI database dependency |
-| `backend/alembic/` | Alembic environment and versioned schema changes |
+| `backend/app/main.py` | Creates the FastAPI application, registers routers, and defines health checks |
+| `backend/app/core/config.py` | Loads settings from environment variables and the repository-root `.env` |
+| `backend/app/api/routes/` | Candidate, skill, experience, education, resume preview, and resume import endpoints |
+| `backend/app/schemas/` | Pydantic request and response validation |
+| `backend/app/models/` | SQLAlchemy models for profile, skills, experience, education, and jobs |
+| `backend/app/services/` | Resume validation, text extraction, analysis, normalization, and import |
+| `backend/app/db/` | Declarative base, engine, and request-scoped sessions |
+| `backend/alembic/` | Migration environment and schema revisions |
 
-### Request and persistence flow
+## Resume processing flow
 
-For a candidate request, FastAPI validates the body using the corresponding Pydantic schema and injects a database session via `get_db`. The route performs the query or mutation using the SQLAlchemy model, commits writes, and returns a response validated against `CandidateResponse`. Create and update operations roll back on `IntegrityError` and return HTTP 409. Missing profiles return 404. No table creation is performed at API startup.
+1. The client uploads a PDF or DOCX to `POST /api/v1/candidates/{candidate_id}/resume/preview`.
+2. The API checks that the candidate exists, validates the upload (maximum 5 MiB), and extracts text. Files are not persisted.
+3. If `RESUME_AI_ENABLED` is true, the service tries Groq. It checks returned values against text evidence and falls back to local parsing if the provider is unavailable. Otherwise, the local parser is used.
+4. The preview response contains contact details, skills, experience, education, parser information, and warnings. Extraction is best-effort; the user must review it.
+5. The client submits selected records to `POST /api/v1/candidates/{candidate_id}/resume/import` with `approved: true`. The API creates new records and skips duplicates.
 
-The health endpoint `/health` does not query the database. `/health/db` runs `SELECT 1` and returns 503 if a SQLAlchemy database error occurs.
+The import endpoint requires an explicit approval flag, but it does not prove that the submitted records came from a prior preview. Optional Groq analysis sends extracted resume text to the provider; configure this only when that transfer is acceptable.
 
-### Current data model
+## Data model
 
-`CandidateProfile` stores a UUID, full name, unique/indexed email, optional phone, location, professional summary and years of experience, plus timestamps. `Job` stores a database ID, title, company name, optional location/source/employment type, description, unique job URL, and timestamps.
+- `CandidateProfile`: UUID, name, unique email, optional contact and profile fields, timestamps.
+- `CandidateSkill`: candidate UUID, name, proficiency level, timestamp; unique by candidate and name.
+- `WorkExperience`: candidate UUID, employer, title, dates, current-employment flag, optional location and description.
+- `Education`: candidate UUID, institution, degree, dates, optional field of study and description.
+- `Job`: integer ID, title, company, description, unique URL, optional source/location/employment type.
 
-At present, there are no ORM relationships between these models. There is no candidate list/delete endpoint, no job endpoint, no application entity, and no resume entity.
+Skills, experience, and education reference candidate profiles with cascading deletes. `Job` has no relationship to a candidate. There are no user/account, resume-file, application, match, or interview tables, and no job routes.
 
-### Migration status
+## Migration status
 
-Alembic loads metadata from `Base` and obtains the connection URL from application settings. The migration chain contains one jobs-table revision followed by two candidate-profile revisions that both create the same table. As a result, provisioning a fresh database by upgrading to the latest revision is expected to fail on the duplicate creation. Candidate migration definitions also do not fully reflect model-level length, uniqueness/index, and text column constraints. Repair and test the migration chain before using it as a reliable schema bootstrap.
+Alembic uses `Base.metadata` and the configured `DATABASE_URL`. The revision chain contains consecutive revisions `fa05578eada4` and `5b0bd740df7a` that both create `candidate_profiles`; a fresh upgrade to head is expected to fail. Some candidate migration columns and constraints also differ from the current ORM model. Repair and test the migration history before relying on it for database setup.
 
-## Target product architecture
+## Future product design
 
-The intended product is a modular, user-directed assistant. A potential future decomposition is:
+The intended product may grow to include authorized job-source adapters, normalization, explainable matching, user-reviewed application drafts, and application tracking. These features are not implemented. No frontend, worker, queue, job-source integration, application-submission workflow, notification service, or calendar integration is present.
 
-```text
-Web client (not implemented)
-          │ REST
-          ▼
-FastAPI API
-   ├── Candidate / resume management
-   ├── Job discovery and normalization
-   ├── Matching and recommendations
-   ├── Application-material drafting
-   └── Application and interview tracking
-          │
-          ├── PostgreSQL persistence
-          ├── Optional background worker / queue
-          ├── Optional LLM provider
-          └── Optional calendar / notification providers
-```
+Keep integrations replaceable and matching independently testable. Do not bypass source terms, authentication, CAPTCHA, rate limits, or other access controls. Require explicit user approval for consequential actions.
 
-Do not interpret this diagram as deployed services. The repository currently has no frontend, worker, queue, LLM integration, job-source adapter, notification provider, or calendar integration.
+## Current limitations
 
-### Intended user workflow
+- There is no authentication or authorization; candidate routes are not safe to expose as a multi-user service.
+- Resume preview is best-effort and does not store the uploaded file.
+- Local resume parsing recognizes common layouts and a fixed technical-skill catalog; it can miss details.
+- AI output is not guaranteed to be correct even when checked against source text.
+- Migration history must be repaired and tested before fresh-database provisioning.
 
-1. A user supplies profile information and, eventually, a resume.
-2. The system extracts or records structured candidate information for user review.
-3. The system obtains jobs only from sources that permit the access method.
-4. Jobs are normalized and deduplicated before being stored or shown.
-5. Deterministic requirements and explainable scoring rank possible matches.
-6. Optional AI components can assist with semantic interpretation and drafting, with their output validated.
-7. The user reviews recommendations and generated materials.
-8. The system takes no consequential application action without explicit user approval.
-9. The user can track applications, interviews, deadlines, and reminders.
+## Tests
 
-Steps 1–9 describe the target, not current behavior.
-
-## Future component boundaries
-
-When the product grows, keep source-specific integrations and provider-specific behavior behind replaceable interfaces. A future job-source adapter should normalize records into a shared job representation; matching should be testable independently of any LLM; and document generation should produce drafts for user review rather than submitting them automatically.
-
-Introduce background work only when a concrete task is too slow for a request/response cycle. The current system has no Redis, queue, or worker. Likewise, authentication, authorization, file storage, audit history, and production observability have not yet been implemented and are prerequisites for handling real user data safely.
-
-## Safety and reliability principles
-
-- Keep secrets in local environment configuration; do not commit `.env`.
-- Validate all external and user-provided data.
-- Use authorized job sources and honor terms, rate limits, and access controls.
-- Do not bypass CAPTCHA, authentication, anti-bot protections, or platform restrictions.
-- Require explicit user approval before submitting an application or taking another consequential action.
-- Prefer deterministic and explainable logic for validation, scoring, deduplication, and state transitions.
-- Test any future AI features for unsupported claims and malformed output.
-
-## Testing strategy
-
-The existing suite tests health responses using a mocked database and asserts selected `Job` model metadata. It does not currently provide integration coverage of candidate persistence or migrations.
-
-As implementation expands, add focused unit tests for schemas and services, database integration tests for persistence and migrations, and end-to-end tests for complete user-visible workflows. AI evaluation datasets and ranking/generation quality metrics are future work.
+The test suite includes health checks, model and schema validation, skills/experience/education rules, resume validation and parsing, extraction fallback, and import behavior. It does not comprehensively test the migration chain or production-database operations.

@@ -1,92 +1,78 @@
 # Project Roadmap
 
-This roadmap reflects the repository's current implementation, rather than the original day-by-day schedule. A feature is marked **Implemented** only when corresponding code exists. Planned product capabilities are not implied by the architecture diagrams or environment-template variables.
+This roadmap describes code that exists today. Configuration placeholders and product goals do not count as implemented features.
 
-## Current snapshot
+## Current status
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Python project setup | Implemented | `pyproject.toml`, root and backend requirements files |
-| FastAPI application | Implemented | App is in `backend/app/main.py` |
-| API health checks | Implemented | `/health` and `/health/db` |
-| Candidate profile persistence | Partially implemented | SQLAlchemy model, schemas, create/read-by-ID/patch endpoints |
-| Job persistence model | Model only | `Job` schema is represented in SQLAlchemy; no API or ingestion exists |
-| Alembic | Configured, needs repair | Candidate profile table is created by two revisions in succession |
-| Automated tests | Initial | Health tests and job metadata tests; no candidate DB integration tests |
-| Resume upload/parsing | Not implemented | No upload route, document parser, or resume model |
-| Job discovery | Not implemented | No source integration, ingestion, normalization, or deduplication |
-| Job matching/recommendations | Not implemented | No scoring service or matching endpoint |
-| LLM / agent workflow | Not implemented | No LLM provider, LangChain, or LangGraph code |
-| Application preparation/tracking | Not implemented | No application model or endpoints |
-| Frontend | Not implemented | No frontend source or package manifest |
-| Authentication/authorization | Not implemented | Candidate routes are currently unauthenticated |
-| Notifications/calendar | Not implemented | Template placeholders only; no integrations |
-| Docker / deployment / CI | Not implemented | No compose or workflow configuration is present |
+| FastAPI backend and health checks | Implemented | `/health` and `/health/db` |
+| Candidate profiles | Implemented | Create, get by UUID, and partial update |
+| Candidate skills | Implemented | Create, list, update, and delete |
+| Work experience | Implemented | Create, list, update, and delete |
+| Education | Implemented | Create, list, update, and delete |
+| Resume preview | Implemented | PDF/DOCX validation, text extraction, local analysis, optional Groq |
+| Reviewed resume import | Implemented | Requires `approved: true`; skips duplicates |
+| Job persistence | Model only | No job API or ingestion |
+| Database migrations | Configured, needs repair | Two revisions create the candidate table; model and migration differ |
+| Tests | Initial coverage | Unit/schema and SQLite-backed resume-import coverage; migration chain needs tests |
+| Job search and recommendations | Not implemented | No source adapters, ingestion, or matching |
+| Application preparation and tracking | Not implemented | No generation, application, or interview models/routes |
+| Authentication and authorization | Not implemented | API endpoints are unauthenticated |
+| Frontend | Not implemented | No frontend project |
+| Notifications, calendar, deployment, CI | Not implemented | No integrations or infrastructure configuration |
 
-## Recommended next steps
+## Recommended priorities
 
-The order below prioritizes a usable and reliable backend foundation before adding larger product features.
+### 1. Make database setup reliable
 
-### 1. Stabilize database setup
+- Repair the duplicate candidate-profile revisions.
+- Align migration definitions with ORM constraints and fields.
+- Add clean-database upgrade and downgrade tests.
+- Document and verify the supported PostgreSQL connection driver.
 
-- Consolidate the duplicate candidate-profile migration into a valid migration history.
-- Align the migration columns and constraints with the SQLAlchemy model.
-- Ensure downgrade functions are meaningful and safe for the supported workflow.
-- Add a migration test against a clean database.
-- Verify the configured PostgreSQL driver and connection URL in a development setup.
+### 2. Add access control before real user data
 
-### 2. Complete candidate-profile API quality
+- Define user identity and profile ownership.
+- Implement authentication and authorization on every candidate-scoped endpoint.
+- Define privacy, retention, logging, and deletion policies for profile and resume data.
+- Restrict deployment exposure until these controls exist.
 
-- Add tests for create, fetch, update, validation, not-found, and duplicate-email behavior.
-- Exercise persistence against a test database rather than relying only on mocked sessions.
-- Decide whether list/delete operations and profile ownership are in scope.
-- Add authentication and authorization before exposing real candidate information.
+### 3. Strengthen current API coverage
 
-### 3. Build a vertical job-data slice
+- Add persistence integration tests for candidate, skill, experience, and education APIs.
+- Test database constraints, failure behavior, and all endpoint response contracts.
+- Document supported resume layouts and improve extraction based on representative test fixtures.
+- Make the resume import approval/review flow clear to clients.
 
-- Add job request/response schemas and API behavior for the existing `Job` model.
-- Choose one permitted job source and document its terms/access method.
-- Implement source-specific fetching behind a small adapter, then validate and normalize records.
-- Define and test deduplication behavior using source identifiers and/or canonical URLs.
-- Add database and endpoint tests.
+### 4. Build job discovery and matching
 
-### 4. Add explainable matching
+- Add schemas and CRUD endpoints for the existing job model if needed.
+- Select a permitted job source and implement a small source adapter.
+- Normalize and deduplicate listings; document source terms and rate limits.
+- Start with deterministic matching and explainable reasons.
 
-- Start with deterministic criteria and explicit match reasons.
-- Keep ranking logic independently testable; do not require an LLM for basic recommendations.
-- Add representative fixtures and quality checks for expected ranking behavior.
+### 5. Add application workflow and product experience
 
-### 5. Add resume and application preparation
-
-- Define secure resume storage, accepted formats, size limits, and retention behavior before enabling uploads.
-- Parse supported documents into a reviewable candidate profile.
-- Add generation only after choosing a provider boundary and validating output for unsupported claims.
-- Keep generated materials as drafts and require explicit user approval for consequential actions.
-
-### 6. Add application lifecycle, user experience, and operations
-
-- Model applications and status history before implementing tracking endpoints.
-- Add interviews, deadlines, reminders, and optional calendar/notification integrations as independently testable components.
-- Add a frontend only after the API contracts are stable.
-- Add Docker-based development, CI checks, authentication, logging, and deployment configuration as their needs become concrete.
+- Model applications and status history before adding tracking routes.
+- Keep generated material as a draft; validate claims and require user approval.
+- Add a frontend after API contracts stabilize.
+- Add notifications, calendar connections, background work, CI, and deployment only when their requirements are clear.
 
 ## Product target
 
-The desired end-to-end flow is:
-
 ```text
-Candidate profile / resume
+Candidate profile and reviewed resume data
     → permitted job discovery
-    → normalized and deduplicated listings
+    → normalized listings
     → explainable recommendations
     → user-reviewed application drafts
-    → explicit user approval
+    → explicit approval
     → application and interview tracking
-    → optional reminders and calendar events
 ```
 
-This is a product goal, not a description of current functionality. Automated access must respect provider terms, rate limits, and technical controls; the system must not bypass CAPTCHA, authentication, or anti-bot protections.
+Only profile management and resume review/import are currently implemented. Do not bypass provider terms, access controls, or anti-bot protections. Consequential actions must remain under user control.
 
 ## Definition of done
 
-For each feature, update this roadmap and relevant documentation when code is added. A feature should not be considered complete until its behavior is tested, its error cases are handled, its data changes are migrated, and its user-facing contract is documented. Before handling real user data, security, access control, privacy, and retention behavior must be addressed.
+For each feature, update this roadmap and related documentation. A feature is complete when its API behavior and error cases are documented and tested, its database changes have tested migrations, and privacy and access-control risks are addressed.
