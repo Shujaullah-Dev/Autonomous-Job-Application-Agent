@@ -1,8 +1,7 @@
 
 import pytest
-from pydantic import ValidationError
-
 from app.schemas.job import JobCreate
+from pydantic import ValidationError
 
 
 def valid_job():
