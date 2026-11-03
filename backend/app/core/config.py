@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     database_url: str
     dev_job_write_key: str
+    job_source_timeout_seconds: float = 20.0
     
     # Groq
     groq_api_key: str = ""
