@@ -1,3 +1,13 @@
+import sys
+from pathlib import Path
+
+# Add the parent 'backend' directory to sys.path so 'app' can be imported
+current_dir = Path(__file__).resolve().parent
+backend_dir = current_dir.parent
+if str(backend_dir) not in sys.path:
+    sys.path.append(str(backend_dir))
+
+
 from logging.config import fileConfig
 
 from alembic import context
