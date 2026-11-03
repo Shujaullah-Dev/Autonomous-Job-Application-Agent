@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     database_url: str
-
+    dev_job_write_key: str
+    
     # Groq
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-20b"
