@@ -1,4 +1,3 @@
-
 """Read public job listings from one Greenhouse board."""
 
 import html
@@ -11,11 +10,15 @@ import httpx
 from pydantic import ValidationError
 
 from app.schemas.job import JobCreate
+from app.services.job_sources.base import (
+    SourceFetchResult,
+)
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
 
+# Pattern allows standard Greenhouse board tokens
 BOARD_TOKEN_PATTERN = re.compile(
     r"[A-Za-z0-9][A-Za-z0-9_-]{0,62}\Z"
 )
@@ -148,20 +151,22 @@ class GreenhouseSource:
 
     def fetch(
         self,
-        board_token: str,
-    ) -> GreenhouseFetchResult:
+        account_identifier: str,
+        *,
+        company_name: str | None = None,
+    ) -> SourceFetchResult:
         """Retrieve and normalize published board jobs."""
 
         if not BOARD_TOKEN_PATTERN.fullmatch(
-            board_token
+            account_identifier
         ):
             raise JobSourceError(
                 "invalid_board_token"
             )
 
-        url = f"{BASE_URL}/{board_token}"
+        url = f"{BASE_URL}/{account_identifier}"
 
-        # Get the company's actual board name.
+        # Get the company's verified board name if not supplied
         board_data = self._get_json(url)
 
         if not isinstance(board_data, dict):
@@ -169,18 +174,19 @@ class GreenhouseSource:
                 "invalid_board_payload"
             )
 
-        company_name = board_data.get("name")
+        verified_company_name = board_data.get("name")
 
         if (
-            not isinstance(company_name, str)
-            or not company_name.strip()
-            or len(company_name.strip()) > 255
+            not isinstance(verified_company_name, str)
+            or not verified_company_name.strip()
+            or len(verified_company_name.strip()) > 255
         ):
             raise JobSourceError(
                 "invalid_board_name"
             )
-
-        company_name = company_name.strip()
+        
+        # Keep the verified company name from the API
+        company_name = verified_company_name.strip()
 
         # Retrieve the full published job descriptions.
         listing = self._get_json(
@@ -241,8 +247,6 @@ class GreenhouseSource:
                 else ""
             )
 
-            # The Day 8 schema limits descriptions
-            # to 40,000 characters.
             try:
                 job = JobCreate(
                     title=record.get("title"),
@@ -254,8 +258,9 @@ class GreenhouseSource:
                     ),
                     source=(
                         "greenhouse:"
-                        f"{board_token.lower()}"
+                        f"{account_identifier.lower()}"
                     ),
+                    source_job_id=str(record.get("id")),
                     work_mode=(
                         "remote"
                         if location
@@ -279,16 +284,17 @@ class GreenhouseSource:
             jobs.append(job)
 
         logger.info(
-            "Greenhouse board=%s listings=%d "
+            "Greenhouse account=%s listings=%d "
             "valid=%d skipped=%d",
-            board_token,
+            account_identifier,
             len(records),
             len(jobs),
             skipped,
         )
 
-        return GreenhouseFetchResult(
-            board_token=board_token,
+        return SourceFetchResult(
+            provider="greenhouse",
+            account_identifier=account_identifier,
             company_name=company_name,
             source_count=len(records),
             skipped_count=skipped,

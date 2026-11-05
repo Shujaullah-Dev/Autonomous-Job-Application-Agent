@@ -112,3 +112,7 @@ class Job(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_job_id: Mapped[str | None] = mapped_column(String(100), nullable=True)  # <-- Ensure this exists
+    employment_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
