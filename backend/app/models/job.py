@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
     true,
 )
@@ -27,6 +28,11 @@ class Job(Base):
         CheckConstraint(
             "salary_max IS NULL OR salary_max >= 0",
             name="ck_jobs_salary_max_nonnegative",
+        ),
+        UniqueConstraint(
+            "source",
+            "source_job_id",
+            name="uq_jobs_source_source_job_id",
         ),
         CheckConstraint(
             "salary_min IS NULL OR salary_max IS NULL "
@@ -92,6 +98,20 @@ class Job(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Provider-specific job identity
+    source_job_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    # Normalized job URL
+    canonical_url: Mapped[str | None] = mapped_column(
+        String(2048),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -112,7 +132,3 @@ class Job(Base):
         onupdate=func.now(),
         nullable=False,
     )
-
-    source: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    source_job_id: Mapped[str | None] = mapped_column(String(100), nullable=True)  # <-- Ensure this exists
-    employment_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
