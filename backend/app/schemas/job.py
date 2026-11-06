@@ -25,6 +25,7 @@ class JobCreate(BaseModel):
     job_url: HttpUrl
 
     source: str | None = Field(default="manual", max_length=100)
+    source_job_id: str | None = Field(default=None, max_length=100)
     employment_type: str | None = Field(
         default=None, max_length=50
     )

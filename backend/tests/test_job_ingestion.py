@@ -30,14 +30,17 @@ def sample_job(
     url="https://example.com/jobs/100",
     description="Build Python APIs",
     source="greenhouse:demo",
+    source_job_id="101",
+    title="Backend Developer",
 ):
     return JobCreate(
-        title="Backend Developer",
+        title=title,
         company_name="Demo Technologies",
         location="Remote",
         description=description,
         job_url=url,
         source=source,
+        source_job_id=source_job_id,
         work_mode="remote",
     )
 
@@ -109,7 +112,9 @@ def test_multiple_jobs_are_inserted(db):
             url="https://example.com/jobs/100"
         ),
         sample_job(
-            url="https://example.com/jobs/200"
+            url="https://example.com/jobs/200",
+            source_job_id="200",
+            title="Platform Engineer",
         ),
     ]
 
@@ -187,3 +192,87 @@ def test_inactive_job_reactivated(db):
 
     db.refresh(stored)
     assert stored.is_active is True
+
+
+def test_cross_source_duplicate_is_skipped(db):
+    ingest_jobs(
+        db,
+        [
+            sample_job(
+                source="greenhouse:demo",
+            )
+        ],
+        apply=True,
+    )
+
+    incoming = sample_job(
+        url="https://different.com/jobs/101",
+        source="lever:demo",
+    )
+
+    result = ingest_jobs(
+        db,
+        [incoming],
+        apply=True,
+    )
+
+    assert result.created == 0
+    assert result.possible_duplicates == 1
+    assert result.skipped == 1
+    assert count_jobs(db) == 1
+
+
+def test_tracking_url_does_not_create_duplicate(db):
+    first = sample_job(
+        url="https://example.com/jobs/101"
+    )
+
+    second = sample_job(
+        url=(
+            "https://example.com/jobs/101"
+            "?utm_source=linkedin"
+        )
+    )
+
+    ingest_jobs(
+        db,
+        [first],
+        apply=True,
+    )
+
+    result = ingest_jobs(
+        db,
+        [second],
+        apply=True,
+    )
+
+    assert result.created == 0
+    assert result.unchanged == 1
+    assert count_jobs(db) == 1
+
+
+def test_provider_id_identifies_existing_job(db):
+    first = sample_job(
+        url="https://example.com/jobs/101"
+    )
+
+    ingest_jobs(
+        db,
+        [first],
+        apply=True,
+    )
+
+    updated = sample_job(
+        url="https://example.com/jobs/101-updated",
+        description="Updated description",
+    )
+
+    result = ingest_jobs(
+        db,
+        [updated],
+        apply=True,
+    )
+
+    assert result.created == 0
+    assert result.updated == 1
+    assert count_jobs(db) == 1

@@ -1,6 +1,6 @@
 # AI Job Agent
 
-AI Job Agent is an early-stage FastAPI backend for maintaining candidate profiles and reviewing structured information extracted from resumes. Job discovery, recommendations, application tracking, and a frontend are not implemented.
+AI Job Agent is an early-stage FastAPI backend for maintaining candidate profiles, reviewing structured information extracted from resumes, and importing jobs from supported providers.
 
 ## What is implemented
 
@@ -8,6 +8,7 @@ AI Job Agent is an early-stage FastAPI backend for maintaining candidate profile
 - Candidate skill, work experience, and education management.
 - PDF and DOCX resume preview, with a local parser and optional Groq-powered extraction.
 - A separate, explicitly approved resume-import endpoint that adds reviewed details and skips duplicates.
+- Multi-source job discovery and ingestion from Greenhouse Job Board and Lever Postings APIs, with dry-run and apply modes.
 - SQLAlchemy models and Alembic migrations for candidate profiles, skills, experience, education, and jobs. **The migration history needs repair before it can reliably provision a fresh database.**
 
 There is no authentication or authorization. Do not expose this API to untrusted networks or use it with real candidate data in a shared environment.
@@ -22,7 +23,8 @@ backend/
     db/               SQLAlchemy base and sessions
     models/            Database models
     schemas/           Request and response validation
-    services/          Resume parsing, analysis, and import logic
+    services/          Resume processing, job-source adapters, and ingestion
+    scripts/           Job ingestion command-line tools
     main.py            FastAPI application
   alembic/             Database migration environment and revisions
   tests/               Backend tests
@@ -94,9 +96,25 @@ By default, the local parser is used. It recognizes a fixed skill catalog and co
 
 Send selected records to the import endpoint as JSON with `"approved": true`. The import API rejects unapproved requests, requires at least one selected record, and reports created and skipped counts. It avoids duplicate skills and duplicate experience or education records. Preview and import are separate requests: the import endpoint accepts reviewed data; it does not itself verify that the supplied details came from a prior preview.
 
+## Multi-Source Job Discovery
+
+The job importer supports the Greenhouse Job Board API and Lever Postings API. Provider adapters normalize their listings into the shared job schema. Each imported listing retains its provider (`source`) and provider-specific identifier (`source_job_id`), along with its original `job_url` and normalized `canonical_url`.
+
+The ingestion pipeline canonicalizes URLs and checks existing jobs by provider identity and canonical URL. It also checks company/title/location fingerprints for likely cross-provider duplicates; possible duplicates are skipped and reported. Both providers use the same `jobs` table, which can be hosted on PostgreSQL or Supabase.
+
+The importer defaults to a dry run and does not commit database changes unless `--apply` is passed. From the `backend` directory, for example:
+
+```powershell
+python -m app.scripts.ingest_jobs --greenhouse-board example-board
+python -m app.scripts.ingest_jobs --lever-site example-site --lever-company-name "Example Company"
+python -m app.scripts.ingest_jobs --greenhouse-board example-board --lever-site example-site --lever-company-name "Example Company" --apply
+```
+
+Repeat `--greenhouse-board` or `--lever-site` to import from multiple accounts. Each `--lever-site` must have a corresponding `--lever-company-name` in the same order. The command uses `DATABASE_URL` from the repository-root `.env`. Review the dry-run summary before applying imports.
+
 ## Database migrations
 
-The ORM defines `candidate_profiles`, `candidate_skills`, `work_experiences`, `educations`, and `jobs`. The `jobs` table has no API or ingestion workflow yet.
+The ORM defines `candidate_profiles`, `candidate_skills`, `work_experiences`, `educations`, and `jobs`. Jobs are ingested through the command-line importer; there is no public job ingestion API.
 
 Alembic is configured in `alembic.ini` and loads its URL from `DATABASE_URL`. Two consecutive revisions, `fa05578eada4` and `5b0bd740df7a`, both create `candidate_profiles`; therefore, upgrading a clean database to head is expected to fail. The candidate migration columns and constraints also do not fully match the model. Repair and test the migration history before using it to create or update a database. Inspect generated migrations and back up important data before applying schema changes.
 
@@ -113,7 +131,7 @@ Tests cover health checks, model and schema behavior, resume validation/parsing/
 
 ## Future work
 
-Job-source integrations, job search, matching, AI-generated application materials, application tracking, authentication, a frontend, notifications, and deployment infrastructure remain future work. Any future job integrations should respect provider terms and access controls; consequential actions should require user approval.
+Job search, matching, AI-generated application materials, application tracking, authentication, a frontend, notifications, and deployment infrastructure remain future work. Job-source requests should respect provider terms and access controls; consequential actions should require user approval.
 
 ## Documentation
 

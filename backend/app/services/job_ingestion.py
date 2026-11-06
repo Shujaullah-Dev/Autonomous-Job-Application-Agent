@@ -1,17 +1,19 @@
-
-"""Import normalized external jobs into the database."""
+"""Multi-source job ingestion with duplicate protection."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
 from app.schemas.job import JobCreate
+from app.services.job_deduplication import (
+    canonicalize_url,
+    find_existing_by_identity,
+    find_possible_duplicate,
+)
 
-# Fields that may change when a listing is refreshed.
 SYNC_FIELDS = (
     "title",
     "company_name",
@@ -37,6 +39,7 @@ class IngestionSummary:
     updated: int
     unchanged: int
     skipped: int
+    possible_duplicates: int
     applied: bool
 
 
@@ -46,86 +49,116 @@ def ingest_jobs(
     *,
     apply: bool = False,
 ) -> IngestionSummary:
-    """
-    Insert new jobs and update known jobs from the same source.
+    """Import jobs from multiple providers."""
 
-    Default: dry-run. No database writes are committed.
-    """
+    created = 0
+    updated = 0
+    unchanged = 0
+    skipped = 0
+    possible_duplicates = 0
 
-    urls = [str(item.job_url) for item in jobs]
-
-    if len(urls) != len(set(urls)):
-        raise ValueError(
-            "The input contains duplicate job URLs"
-        )
+    batch_urls = set()
+    batch_ids = set()
+    batch_fingerprints = set()
 
     try:
-        existing: dict[str, Job] = {}
+        for item in jobs:
 
-        # Use chunks to avoid excessively large SQL queries.
-        for start in range(0, len(urls), 200):
-            chunk = urls[start : start + 200]
+            url = str(item.job_url)
+            canonical = canonicalize_url(url)
 
-            found = db.scalars(
-                select(Job).where(
-                    Job.job_url.in_(chunk)
+            # Same canonical URL inside this import.
+            if canonical in batch_urls:
+                raise ValueError("Duplicate job URL in import batch")
+
+            batch_urls.add(canonical)
+
+            # Same provider identity inside this import.
+            if item.source_job_id:
+                identity = (
+                    item.source,
+                    item.source_job_id,
                 )
-            ).all()
 
-            existing.update(
-                {
-                    item.job_url: item
-                    for item in found
-                }
+                if identity in batch_ids:
+                    skipped += 1
+                    continue
+
+                batch_ids.add(identity)
+
+            existing = find_existing_by_identity(
+                db,
+                item,
             )
 
-        created = 0
-        updated = 0
-        unchanged = 0
-        skipped = 0
-
-        for item in jobs:
             data = item.model_dump()
-            data["job_url"] = str(item.job_url)
+            data["job_url"] = url
+            data["canonical_url"] = canonical
 
-            old = existing.get(data["job_url"])
+            if existing:
 
-            # New job
-            if old is None:
-                created += 1
+                # Another provider already owns the listing.
+                if existing.source != item.source:
+                    skipped += 1
+                    continue
 
-                if apply:
-                    db.add(Job(**data))
+                changes = {
+                    field: data[field]
+                    for field in SYNC_FIELDS
+                    if getattr(existing, field) != data[field]
+                }
+
+                if existing.source_job_id != item.source_job_id:
+                    changes["source_job_id"] = item.source_job_id
+
+                if existing.canonical_url != canonical:
+                    changes["canonical_url"] = canonical
+
+                if not existing.is_active:
+                    changes["is_active"] = True
+
+                if changes:
+                    updated += 1
+
+                    if apply:
+                        for field, value in changes.items():
+                            setattr(existing, field, value)
+                else:
+                    unchanged += 1
 
                 continue
 
-            # Do not overwrite a listing belonging
-            # to another provider or manual source.
-            if old.source != data["source"]:
+            # Check for likely cross-source duplicates.
+            possible = find_possible_duplicate(
+                db,
+                item,
+            )
+
+            if possible:
+                possible_duplicates += 1
                 skipped += 1
                 continue
 
-            # Detect changed source fields.
-            changes = {
-                field: data[field]
-                for field in SYNC_FIELDS
-                if getattr(old, field) != data[field]
-            }
+            # Avoid duplicates in the same import batch.
+            fingerprint = (
+                item.company_name.casefold().strip(),
+                item.title.casefold().strip(),
+                (item.location or "").casefold().strip(),
+            )
 
-            # An existing listing can become active again
-            # if the provider publishes it again.
-            if not old.is_active:
-                changes["is_active"] = True
+            if fingerprint in batch_fingerprints:
+                possible_duplicates += 1
+                skipped += 1
+                continue
 
-            if changes:
-                updated += 1
+            batch_fingerprints.add(fingerprint)
 
-                if apply:
-                    for field, value in changes.items():
-                        setattr(old, field, value)
+            created += 1
 
-            else:
-                unchanged += 1
+            if apply:
+                db.add(
+                    Job(**data)
+                )
 
         if apply:
             db.commit()
@@ -136,11 +169,19 @@ def ingest_jobs(
             updated=updated,
             unchanged=unchanged,
             skipped=skipped,
+            possible_duplicates=possible_duplicates,
             applied=apply,
         )
 
     except SQLAlchemyError as exc:
         db.rollback()
+
         raise JobIngestionError(
             "database_error"
         ) from exc
+
+    except Exception:
+        if apply:
+            db.rollback()
+
+        raise
