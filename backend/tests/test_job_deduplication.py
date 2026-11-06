@@ -1,16 +1,14 @@
 
+from app.models.job import Job
+from app.schemas.job import JobCreate
+from app.services.job_deduplication import (
+    canonicalize_url,
+    find_possible_duplicate,
+    job_fingerprint,
+)
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
-
-from app.models.job import Job
-from app.schemas.job import JobCreate
-
-from app.services.job_deduplication import (
-    canonicalize_url,
-    job_fingerprint,
-    find_possible_duplicate,
-)
 
 
 def test_remove_tracking_parameters():

@@ -6,9 +6,6 @@ Create Date: 2026-11-05 20:42:58.383324
 
 """
 
-from alembic import op
-import sqlalchemy as sa
-
 from urllib.parse import (
     parse_qsl,
     urlencode,
@@ -16,6 +13,8 @@ from urllib.parse import (
     urlunsplit,
 )
 
+import sqlalchemy as sa
+from alembic import op
 
 revision = "91d44bafc0b0"
 down_revision = "d8e20261103"
