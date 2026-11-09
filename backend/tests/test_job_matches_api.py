@@ -87,7 +87,7 @@ def matching_client(monkeypatch):
                     "Python and FastAPI. "
                     "Minimum 2 years of experience."
                 ),
-                job_url="https://example.com/jobs/1",
+                job_url="https://fixtures.qa.test/jobs/1",
                 work_mode="remote",
                 is_active=True,
             )
@@ -101,7 +101,7 @@ def matching_client(monkeypatch):
                 description=(
                     "Graphic design and visual branding."
                 ),
-                job_url="https://example.com/jobs/2",
+                job_url="https://fixtures.qa.test/jobs/2",
                 work_mode="onsite",
                 is_active=True,
             )

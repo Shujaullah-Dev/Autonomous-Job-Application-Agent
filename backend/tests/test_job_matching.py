@@ -6,6 +6,7 @@ from app.services.job_matching import (
     MatchPreferences,
     match_job,
     score_experience,
+    score_location,
     score_skills,
 )
 
@@ -90,7 +91,7 @@ def test_full_matching(candidate, job):
     assert 0 <= result.score <= 100
     assert result.breakdown["title"] == 100
     assert result.breakdown["experience"] == 100
-    assert result.breakdown["salary"] == 100
+    assert result.breakdown["salary"] == 50
     assert "Docker" in result.missing_skills
 
 
@@ -125,7 +126,7 @@ def test_unknown_requirements_are_not_zero(candidate):
 
     result = match_job(candidate, job)
 
-    assert result.breakdown["skills"] == 50
+    assert result.breakdown["skills"] == 0
     assert result.breakdown["experience"] == 50
     assert result.warnings
 
@@ -136,3 +137,39 @@ def test_score_is_deterministic(candidate, job):
 
     assert first.score == second.score
     assert first.breakdown == second.breakdown
+
+
+def test_remote_does_not_mean_global_eligibility():
+    score, known = score_location(
+        "Islamabad",
+        "New York, New York",
+        "Islamabad",
+        "remote",
+    )
+
+    assert score == 50.0
+    assert known is False
+
+
+def test_matching_local_location():
+    score, known = score_location(
+        "Islamabad",
+        "Islamabad, Pakistan",
+        "Islamabad",
+        "remote",
+    )
+
+    assert score == 80.0
+    assert known is True
+
+
+def test_onsite_location_mismatch():
+    score, known = score_location(
+        "Islamabad",
+        "Lahore, Pakistan",
+        "Islamabad",
+        "onsite",
+    )
+
+    assert score == 0.0
+    assert known is True

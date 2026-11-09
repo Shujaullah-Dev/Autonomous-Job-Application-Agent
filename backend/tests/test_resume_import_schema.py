@@ -51,13 +51,19 @@ def test_empty_import_rejected():
         })
 
 
-def test_missing_proficiency_rejected():
-    with pytest.raises(ValidationError):
-        ResumeImportRequest.model_validate({
-            "approved": True,
-            "skills": [{"name": "Python"}],
-        })
-
+# def test_missing_proficiency_rejected():
+#     with pytest.raises(ValidationError):
+#         ResumeImportRequest.model_validate({
+#             "approved": True,
+#             "skills": [{"name": "Python"}],
+#         })
+def test_string_skill_defaults_to_unassessed():
+    payload = ResumeImportRequest.model_validate({
+        "approved": True,
+        "skills": ["Python"]
+    })
+    assert payload.skills[0].name == "Python"
+    assert payload.skills[0].proficiency_level == "unassessed"
 
 def test_invalid_experience_date_rejected():
     with pytest.raises(ValidationError):

@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ProficiencyLevel = Literal[
+    "unassessed",
     "beginner",
     "intermediate",
     "advanced",
@@ -14,7 +15,7 @@ ProficiencyLevel = Literal[
 
 class SkillCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    proficiency_level: ProficiencyLevel
+    proficiency_level: ProficiencyLevel ="unassessed"
 
     @field_validator("name")
     @classmethod

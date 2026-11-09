@@ -14,3 +14,4 @@ psycopg
 python-multipart>=0.0.20,<1.0
 pypdf>=6.0,<7.0
 python-docx>=1.2,<2.0
+sentence-transformers==6.2.0

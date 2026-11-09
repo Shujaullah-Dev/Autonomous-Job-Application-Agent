@@ -22,6 +22,7 @@ SKILL_CATALOG = {
     'FAISS': ['faiss'], 'PyMuPDF': ['pymupdf'], 'Ollama': ['ollama'],
     'Random Forest': ['random forest'], 'Firebase': ['firebase'],
     'Firestore': ['firestore'], 'Qt': ['qt'], 'mpi4py': ['mpi4py'],
+    "Rust": ["rust", "rustlang"],
 }
 
 
