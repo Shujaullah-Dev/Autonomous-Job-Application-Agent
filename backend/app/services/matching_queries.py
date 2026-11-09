@@ -3,7 +3,7 @@
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.candidate import CandidateProfile
@@ -67,14 +67,37 @@ def load_candidate(
     )
 
 
+
 def load_active_jobs(
     db: Session,
 ) -> list[tuple[Job, JobInput]]:
-    """Load a bounded set of active jobs for MVP scoring."""
+    """Load active, non-demo jobs for candidate matching."""
 
     jobs = db.scalars(
         select(Job)
-        .where(Job.is_active.is_(True))
+        .where(
+            Job.is_active.is_(True),
+
+            # Do not reintroduce the Lever demo board.
+            or_(
+                Job.source.is_(None),
+                Job.source != "lever:leverdemo",
+            ),
+
+            # Exclude known synthetic example URLs.
+            ~Job.job_url.ilike(
+                "https://example.com/%"
+            ),
+            ~Job.job_url.ilike(
+                "http://example.com/%"
+            ),
+
+            # Exclude explicitly fictional listings.
+            ~Job.description.ilike(
+                "%fictional job created solely "
+                "for demonstration purposes%"
+            ),
+        )
         .order_by(Job.id.desc())
         .limit(MAX_EVALUATED_JOBS)
     ).all()

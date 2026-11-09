@@ -72,88 +72,143 @@ def title_tokens(value: str) -> set[str]:
     }
 
 
+
+def candidate_skill_keys(candidate_skills: list[str]) -> set[str]:
+    """Normalize candidate skills and recognized aliases."""
+    known: set[str] = set()
+
+    for skill in candidate_skills:
+        known.add(normalized(skill))
+
+        for canonical in extract_skills(skill):
+            known.add(normalized(canonical))
+
+    return known
+
+
 def score_skills(
     candidate_skills: list[str],
     job_text: str,
 ) -> tuple[float, list[str], list[str], bool]:
-    """Match against the existing resume skill catalog."""
+    """Score recognized skills mentioned by the job."""
 
-    required = set(extract_skills(job_text))
+    mentioned = set(extract_skills(job_text))
 
-    if not required:
-        return 50.0, [], [], False
+    if not mentioned:
+        # Zero positive skill evidence.
+        # The False flag means requirements are unknown,
+        # NOT that the candidate is proven unqualified.
+        return 0.0, [], [], False
 
-    known = {
-        normalized(skill)
-        for skill in candidate_skills
-    }
+    known = candidate_skill_keys(candidate_skills)
 
     matched = sorted(
         skill
-        for skill in required
+        for skill in mentioned
         if normalized(skill) in known
     )
 
-    missing = sorted(required - set(matched))
+    missing = sorted(mentioned - set(matched))
 
-    score = 100.0 * len(matched) / len(required)
+    score = 100.0 * len(matched) / len(mentioned)
 
     return score, matched, missing, True
+
+
 
 
 def score_experience(
     candidate_years: int | None,
     job_text: str,
 ) -> tuple[float, bool]:
-    """Extract a simple years-of-experience requirement."""
+    """Recognize common explicit experience statements."""
 
-    pattern = (
-        r"\b(\d{1,2})\s*\+?\s*"
-        r"(?:years?|yrs?)\b"
+    pattern = re.compile(
+        r"\b(\d{1,2})\s*\+?\s*(?:years?|yrs?)\s+"
+        r"(?:(?:of|in)\s+)?"
+        r"(?:(?:professional|relevant|industry|"
+        r"hands-on|practical|work)\s+)?"
+        r"experience\b",
+        re.IGNORECASE,
     )
 
-    matches = re.findall(
-        pattern,
-        job_text,
-        flags=re.IGNORECASE,
+    company_history = re.compile(
+        r"\b(?:company|firm|business|organization|"
+        r"team|we)\s+"
+        r"(?:has|have|brings?|provides?)\s+"
+        r"(?:over\s+)?$",
+        re.IGNORECASE,
     )
 
-    if candidate_years is None or not matches:
+    requirements: list[int] = []
+
+    for match in pattern.finditer(job_text):
+        prefix = job_text[
+            max(0, match.start() - 60):match.start()
+        ]
+
+        # Avoid common statements describing how
+        # long the employer has operated.
+        if company_history.search(prefix):
+            continue
+
+        requirements.append(int(match.group(1)))
+
+    if candidate_years is None or not requirements:
         return 50.0, False
 
-    required_years = max(int(x) for x in matches)
+    required_years = max(requirements)
 
     if required_years == 0:
         return 100.0, True
 
     return (
-        min(100.0, candidate_years / required_years * 100.0),
+        min(
+            100.0,
+            100.0 * candidate_years / required_years,
+        ),
         True,
     )
+
+
 
 
 def score_title(
     candidate_titles: list[str],
     job_title: str,
+    candidate_skills: list[str] | None = None,
 ) -> tuple[float, bool]:
+    """Combine previous-role overlap with title technologies."""
+
     target = title_tokens(job_title)
+    scores: list[float] = []
 
-    if not target or not candidate_titles:
-        return 50.0, False
+    # Existing Day 11 comparison with previous roles.
+    if target:
+        for title in candidate_titles:
+            previous = title_tokens(title)
 
-    scores = []
+            if previous:
+                scores.append(
+                    100.0 * len(previous & target)
+                    / len(previous | target)
+                )
 
-    for title in candidate_titles:
-        candidate = title_tokens(title)
+    # Additional evidence from technologies in the title.
+    title_skills = set(extract_skills(job_title))
 
-        if not candidate:
-            continue
+    if title_skills:
+        known = candidate_skill_keys(
+            candidate_skills or []
+        )
 
-        intersection = len(candidate & target)
-        union = len(candidate | target)
+        matched_count = sum(
+            normalized(skill) in known
+            for skill in title_skills
+        )
 
         scores.append(
-            100.0 * intersection / union
+            100.0 * matched_count / len(title_skills)
         )
 
     if not scores:
@@ -162,34 +217,38 @@ def score_title(
     return max(scores), True
 
 
+
+
+
 def score_location(
     candidate_location: str | None,
     job_location: str | None,
     preferred_location: str | None,
     work_mode: str | None,
 ) -> tuple[float, bool]:
+    """Compare location text without assuming remote eligibility."""
+
     desired = normalized(
         preferred_location or candidate_location
     )
-
     actual = normalized(job_location)
 
-    # Explicitly remote jobs are location-flexible
-    # for the basic MVP.
+    if desired and actual:
+        if desired == actual:
+            return 100.0, True
+
+        if desired in actual or actual in desired:
+            return 80.0, True
+
+    # Remote does not automatically mean worldwide.
     if work_mode == "remote":
-        return 100.0, True
+        return 50.0, False
 
     if not desired or not actual:
         return 50.0, False
 
-    if desired == actual:
-        return 100.0, True
-
-    # Partial text match is a heuristic, not geocoding.
-    if desired in actual or actual in desired:
-        return 80.0, True
-
     return 0.0, True
+
 
 
 def score_preference(
@@ -206,6 +265,37 @@ def score_preference(
     )
 
 
+# def score_salary(
+#     minimum_salary: int | None,
+#     preferred_currency: str | None,
+#     job_min: int | None,
+#     job_max: int | None,
+#     job_currency: str | None,
+# ) -> tuple[float, bool]:
+#     if minimum_salary is None:
+#         return 50.0, False
+
+#     if (
+#         not preferred_currency
+#         or not job_currency
+#         or preferred_currency.upper() != job_currency.upper()
+#     ):
+#         return 50.0, False
+
+#     highest_known = (
+#         job_max if job_max is not None else job_min
+#     )
+
+#     if highest_known is None:
+#         return 50.0, False
+
+#     return (
+#         100.0 if highest_known >= minimum_salary
+#         else 0.0,
+#         True,
+#     )
+
+
 def score_salary(
     minimum_salary: int | None,
     preferred_currency: str | None,
@@ -213,28 +303,18 @@ def score_salary(
     job_max: int | None,
     job_currency: str | None,
 ) -> tuple[float, bool]:
-    if minimum_salary is None:
-        return 50.0, False
+    """
+    Day 12 safe behavior.
 
-    if (
-        not preferred_currency
-        or not job_currency
-        or preferred_currency.upper() != job_currency.upper()
-    ):
-        return 50.0, False
+    We have salary amounts and currencies, but the
+    database does not record pay periods.
 
-    highest_known = (
-        job_max if job_max is not None else job_min
-    )
+    Return neutral/unknown until the job and
+    candidate salary periods can be compared.
+    """
 
-    if highest_known is None:
-        return 50.0, False
+    return 50.0, False
 
-    return (
-        100.0 if highest_known >= minimum_salary
-        else 0.0,
-        True,
-    )
 
 
 def match_job(
@@ -271,6 +351,7 @@ def match_job(
     title, title_known = score_title(
         candidate.titles,
         job.title,
+        candidate.skills,
     )
     if not title_known:
         warnings.append(
@@ -284,6 +365,13 @@ def match_job(
         prefs.preferred_location,
         job.work_mode,
     )
+
+    if job.work_mode == "remote":
+        warnings.append(
+        "Remote work does not guarantee geographic "
+        "hiring eligibility; verify employer restrictions"
+    )
+    
     if not location_known:
         warnings.append(
             "Location comparison has insufficient data"
@@ -325,6 +413,22 @@ def match_job(
         breakdown[name] * weight
         for name, weight in WEIGHTS.items()
     )
+
+    
+    title_technologies = set(extract_skills(job.title))
+
+    missing_title_technologies = (
+        title_technologies & set(missing)
+    )
+
+    if missing_title_technologies:
+        warnings.append(
+            "Job title mentions technology not listed "
+            "by candidate: "
+            + ", ".join(
+                sorted(missing_title_technologies)
+            )
+        )
 
     return MatchResult(
         job_id=job.id,

@@ -54,6 +54,18 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    
+    if any(
+        site.casefold() == "leverdemo"
+        for site in args.lever_site
+    ):
+        parser.error(
+            "The Lever Demo board contains demonstration "
+            "listings and must not be imported into "
+            "the live matching dataset."
+        )
+
+
     if not args.greenhouse_board and not args.lever_site:
         parser.error(
             "Specify at least one job source"
