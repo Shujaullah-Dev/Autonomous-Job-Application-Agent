@@ -36,47 +36,77 @@ class RankingOutcome:
     insufficient_evidence: int
 
 
+
 def filter_job_pool(
     jobs: Sequence[JobPair],
     *,
     work_mode: str | None = None,
+    include_unknown_work_mode: bool = False,
     title_contains: str | None = None,
     location_contains: str | None = None,
     source: str | None = None,
 ) -> list[JobPair]:
     """
-    Apply explicit filters before ranking.
+    Apply explicit job filters before ranking.
 
-    Location is a literal text filter, NOT a verified
-    geographic hiring eligibility check.
+    If work_mode is provided:
+    - Exact work-mode matches are included.
+    - Jobs with unknown work mode are excluded
+      unless include_unknown_work_mode=True.
+    - Known different work modes are excluded.
+
+    Unknown work mode never means confirmed remote.
     """
 
     title_text = (title_contains or "").strip().casefold()
     location_text = (
-        location_contains or ""
-    ).strip().casefold()
+        (location_contains or "").strip().casefold()
+    )
 
     selected: list[JobPair] = []
 
     for job, data in jobs:
-        if work_mode and job.work_mode != work_mode:
-            continue
 
+        # Work-mode filtering
+        if work_mode is not None:
+            matches_requested_mode = (
+                job.work_mode == work_mode
+            )
+
+            is_permitted_unknown = (
+                include_unknown_work_mode
+                and job.work_mode is None
+            )
+
+            if not (
+                matches_requested_mode
+                or is_permitted_unknown
+            ):
+                continue
+
+        # Job source filtering
         if source and job.source != source:
             continue
 
-        if title_text and title_text not in job.title.casefold():
+        # Job title filtering
+        if (
+            title_text
+            and title_text not in job.title.casefold()
+        ):
             continue
 
+        # Location-text filtering
         if (
             location_text
-            and location_text not in (job.location or "").casefold()
+            and location_text
+            not in (job.location or "").casefold()
         ):
             continue
 
         selected.append((job, data))
 
     return selected
+
 
 
 def has_relevance_evidence(match: MatchResult) -> bool:

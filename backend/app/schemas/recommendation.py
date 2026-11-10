@@ -43,6 +43,8 @@ class RecommendationResponse(BaseModel):
 
     evaluated_jobs: int = Field(ge=0)
     filtered_jobs: int = Field(ge=0)
+    unknown_work_mode_jobs: int = Field(ge=0)
+    filtered_out_jobs: int = Field(ge=0)
     semantic_jobs: int = Field(ge=0)
 
     total_matches: int = Field(ge=0)

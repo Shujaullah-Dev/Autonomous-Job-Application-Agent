@@ -15,7 +15,7 @@ from app.models.experience import WorkExperience
 from app.models.job import Job
 from app.models.skill import CandidateSkill
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -463,3 +463,115 @@ def test_partial_embeddings_fall_back_to_consistent_rules(
         item["semantic_score"] is None
         for item in data["items"]
     )
+
+
+def test_strict_remote_excludes_unknown_jobs(
+    recommendation_client,
+):
+    client, candidate_id, engine, _ = recommendation_client
+
+    with Session(engine) as db:
+        for job in db.scalars(select(Job)).all():
+            job.work_mode = None
+        db.commit()
+
+    response = client.get(
+        endpoint(candidate_id),
+        params={
+            "mode": "rules",
+            "work_mode": "remote",
+            "min_score": 0,
+        },
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["evaluated_jobs"] == 3
+    assert data["unknown_work_mode_jobs"] == 3
+    assert data["filtered_jobs"] == 0
+    assert data["filtered_out_jobs"] == 3
+    assert data["items"] == []
+
+
+def test_unknown_jobs_can_be_included_for_review(
+    recommendation_client,
+):
+    client, candidate_id, engine, _ = recommendation_client
+
+    with Session(engine) as db:
+        for job in db.scalars(select(Job)).all():
+            job.work_mode = None
+        db.commit()
+
+    response = client.get(
+        endpoint(candidate_id),
+        params={
+            "mode": "rules",
+            "work_mode": "remote",
+            "include_unknown_work_mode": True,
+            "min_score": 0,
+        },
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["filtered_jobs"] == 3
+    assert data["total_matches"] == 2
+    assert all(
+        item["work_mode"] is None
+        for item in data["items"]
+    )
+    assert all(
+        any(
+            "Work mode is unknown" in caution
+            for caution in item["cautions"]
+        )
+        for item in data["items"]
+    )
+
+
+def test_soft_remote_preference_keeps_unknown_jobs(
+    recommendation_client,
+):
+    client, candidate_id, engine, _ = recommendation_client
+
+    with Session(engine) as db:
+        for job in db.scalars(select(Job)).all():
+            job.work_mode = None
+        db.commit()
+
+    response = client.get(
+        endpoint(candidate_id),
+        params={
+            "mode": "rules",
+            "preferred_work_mode": "remote",
+            "min_score": 0,
+        },
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["filtered_jobs"] == 3
+
+
+def test_include_unknown_without_filter_is_invalid(
+    recommendation_client,
+):
+    client, candidate_id, _, _ = recommendation_client
+
+    response = client.get(
+        endpoint(candidate_id),
+        params={
+            "mode": "rules",
+            "include_unknown_work_mode": True,
+        },
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 422

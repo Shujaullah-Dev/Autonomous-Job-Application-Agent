@@ -9,15 +9,15 @@ from app.api.routes.candidates import router as candidates_router
 from app.api.routes.education import router as education_router
 from app.api.routes.experience import router as experience_router
 from app.api.routes.job_matches import router as job_matches_router
+from app.api.routes.job_recommendations import (
+    router as job_recommendations_router,
+)
 from app.api.routes.jobs import router as jobs_router
 from app.api.routes.resume_imports import router as resume_imports_router
 from app.api.routes.resumes import router as resumes_router
 from app.api.routes.skills import router as skills_router
 from app.core.config import settings
 from app.db.session import get_db
-from app.api.routes.job_recommendations import (
-    router as job_recommendations_router,
-)
 
 app = FastAPI(
     title=settings.app_name,

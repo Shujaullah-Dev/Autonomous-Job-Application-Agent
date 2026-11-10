@@ -50,6 +50,9 @@ def get_candidate_recommendations(
     db: Annotated[Session, Depends(get_db)],
     mode: Literal["rules", "hybrid"] = "hybrid",
     work_mode: WorkMode | None = None,
+    preferred_work_mode: WorkMode | None = None,
+    include_unknown_work_mode: bool = False,
+    
     title_contains: Annotated[
         str | None,
         Query(max_length=100),
@@ -86,6 +89,12 @@ def get_candidate_recommendations(
     stable sort -> pagination.
     """
 
+    if include_unknown_work_mode and work_mode is None:
+        raise HTTPException(
+            status_code=422,
+            detail="include_unknown_work_mode requires a work_mode",
+        )
+
     try:
         candidate = load_candidate(
             db,
@@ -118,13 +127,21 @@ def get_candidate_recommendations(
     jobs = filter_job_pool(
         all_jobs,
         work_mode=work_mode,
+        include_unknown_work_mode=include_unknown_work_mode,
         title_contains=title_contains,
         location_contains=location_contains,
         source=source,
     )
 
+    unknown_work_mode_jobs = sum(
+        job.work_mode is None
+        for job, _ in all_jobs
+    )
+
+    filtered_out_jobs = len(all_jobs) - len(jobs)
+
     preferences = MatchPreferences(
-        preferred_work_mode=work_mode,
+        preferred_work_mode=preferred_work_mode or work_mode,
         preferred_location=preferred_location,
     )
 
@@ -223,6 +240,45 @@ def get_candidate_recommendations(
         ),
     ]
 
+
+    if unknown_work_mode_jobs:
+        global_warnings.append(
+            f"{unknown_work_mode_jobs} evaluated jobs have "
+            "unknown work mode; they cannot be considered "
+            "confirmed remote jobs."
+        )
+
+    if work_mode and not include_unknown_work_mode:
+        global_warnings.append(
+            "The work_mode filter is strict: jobs with "
+            "unknown work mode were excluded."
+        )
+
+    if work_mode and include_unknown_work_mode:
+        included_unknown = sum(
+            job.work_mode is None
+            for job, _ in jobs
+        )
+
+        if included_unknown:
+            global_warnings.append(
+                f"{included_unknown} jobs with unknown work "
+                "mode were included for review; none is "
+                f"confirmed {work_mode}."
+            )
+
+    if preferred_work_mode and not work_mode:
+        global_warnings.append(
+            "preferred_work_mode changes scoring but does "
+            "not filter jobs or verify their work arrangement."
+        )
+
+    if min_score < 50:
+        global_warnings.append(
+            "Scores below 50 are shown for diagnostics; "
+            "they are not validated application recommendations."
+        )
+
     if location_contains:
         global_warnings.append(
             "Location filtering compares text only, "
@@ -245,7 +301,12 @@ def get_candidate_recommendations(
             "used rule-based scoring only."
         )
 
-    if total_matches == 0:
+    if not jobs:
+        global_warnings.append(
+            "No jobs matched the selected hard filters. "
+            "Scoring was skipped."
+        )
+    elif total_matches == 0:
         global_warnings.append(
             "No jobs satisfied the selected score threshold "
             "and relevance-evidence requirements."
@@ -268,7 +329,26 @@ def get_candidate_recommendations(
             matched_skills=result.match.matched_skills,
             missing_skills=result.match.missing_skills,
             reasons=list(result.reasons),
-            cautions=list(result.cautions),
+            cautions=(
+                list(result.cautions)
+                + (
+                    [
+                        "Work mode is unknown; this job is not "
+                        "confirmed remote, hybrid, or onsite."
+                    ]
+                    if result.job.work_mode is None
+                    else []
+                )
+                + (
+                    [
+                        "Job location differs from candidate location; "
+                        "verify geography and eligibility with employer."
+                    ]
+                    if result.match.breakdown.get("location") == 0
+                    else []
+                )
+            ),
+
         )
         for result in page_items
     ]
@@ -280,6 +360,8 @@ def get_candidate_recommendations(
         model_name=MODEL_NAME if effective_mode == "hybrid" else None,
         evaluated_jobs=len(all_jobs),
         filtered_jobs=len(jobs),
+        unknown_work_mode_jobs=unknown_work_mode_jobs,
+        filtered_out_jobs=filtered_out_jobs,
         semantic_jobs=len(similarities),
         total_matches=total_matches,
         returned_jobs=len(items),
