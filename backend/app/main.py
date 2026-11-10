@@ -1,4 +1,3 @@
-
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -16,6 +15,9 @@ from app.api.routes.resumes import router as resumes_router
 from app.api.routes.skills import router as skills_router
 from app.core.config import settings
 from app.db.session import get_db
+from app.api.routes.job_recommendations import (
+    router as job_recommendations_router,
+)
 
 app = FastAPI(
     title=settings.app_name,
@@ -30,7 +32,7 @@ app.include_router(resumes_router)
 app.include_router(resume_imports_router)
 app.include_router(jobs_router)
 app.include_router(job_matches_router)
-
+app.include_router(job_recommendations_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:

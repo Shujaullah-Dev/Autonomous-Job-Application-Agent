@@ -1,5 +1,5 @@
 
-"""Day 11: Candidate-specific job matching API."""
+"""Candidate-specific job matching API."""
 
 import uuid
 from typing import Annotated
@@ -97,6 +97,7 @@ def match_candidate_jobs(
             status_code=404,
             detail="Candidate not found",
         )
+    require_matching_profile(candidate)
 
     preferences = MatchPreferences(
         preferred_work_mode=preferred_work_mode,
