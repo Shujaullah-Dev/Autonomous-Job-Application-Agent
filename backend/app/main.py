@@ -15,6 +15,9 @@ from app.api.routes.job_matches import router as job_matches_router
 from app.api.routes.job_recommendations import (
     router as job_recommendations_router,
 )
+from app.api.routes.job_workflows import (
+    router as job_workflows_router,
+)
 from app.api.routes.jobs import router as jobs_router
 from app.api.routes.resume_imports import router as resume_imports_router
 from app.api.routes.resumes import router as resumes_router
@@ -37,6 +40,7 @@ app.include_router(jobs_router)
 app.include_router(job_matches_router)
 app.include_router(job_recommendations_router)
 app.include_router(job_explanations_router)
+app.include_router(job_workflows_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:
