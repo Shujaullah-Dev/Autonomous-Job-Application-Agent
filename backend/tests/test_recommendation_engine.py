@@ -215,3 +215,35 @@ def test_duplicate_ranked_ids_rejected():
 
     with pytest.raises(ValueError):
         evaluate_ranking([1, 1], {1}, k=2)
+
+
+def test_unknown_work_mode_requires_opt_in():
+    jobs = [
+        job_pair(
+            1, "Python Developer", "Python",
+            work_mode="remote",
+        ),
+        job_pair(
+            2, "Python Developer", "Python",
+            work_mode=None,
+        ),
+        job_pair(
+            3, "Python Developer", "Python",
+            work_mode="onsite",
+        ),
+    ]
+
+    strict = filter_job_pool(
+        jobs,
+        work_mode="remote",
+    )
+
+    include_unknown = filter_job_pool(
+        jobs,
+        work_mode="remote",
+        include_unknown_work_mode=True,
+    )
+
+    assert [job.id for job, _ in strict] == [1]
+    assert [job.id for job, _ in include_unknown] == [1, 2]
+    assert include_unknown[1][0].work_mode is None
