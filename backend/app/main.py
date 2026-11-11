@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from app.api.routes.candidates import router as candidates_router
 from app.api.routes.education import router as education_router
 from app.api.routes.experience import router as experience_router
+from app.api.routes.job_explanations import (
+    router as job_explanations_router,
+)
 from app.api.routes.job_matches import router as job_matches_router
 from app.api.routes.job_recommendations import (
     router as job_recommendations_router,
@@ -33,6 +36,7 @@ app.include_router(resume_imports_router)
 app.include_router(jobs_router)
 app.include_router(job_matches_router)
 app.include_router(job_recommendations_router)
+app.include_router(job_explanations_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:
