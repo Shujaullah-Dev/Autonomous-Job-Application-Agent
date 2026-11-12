@@ -2,7 +2,7 @@
 """Follow-up API integration tests."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from app.core.config import settings
@@ -20,6 +20,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+
+UTC = timezone.utc  # noqa: UP017
 
 HEADERS = {"X-Dev-Job-Key": "test-secret"}
 

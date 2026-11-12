@@ -2,7 +2,7 @@
 """Schedule and resolve application follow-ups."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +12,8 @@ from app.models.application_follow_up import (
     ApplicationFollowUpEvent,
 )
 from app.services.application_tracking import get_application
+
+UTC = timezone.utc  # noqa: UP017
 
 
 class FollowUpConflict(Exception):

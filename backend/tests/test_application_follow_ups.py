@@ -2,7 +2,7 @@
 """Day 19 follow-up scheduling and lifecycle tests."""
 
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from app.db.base import Base
@@ -24,6 +24,8 @@ from app.services.application_tracking import (
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+
+UTC = timezone.utc  # noqa: UP017
 
 
 @pytest.fixture

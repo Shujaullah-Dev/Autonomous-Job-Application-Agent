@@ -2,7 +2,7 @@
 """Application follow-up and monitoring endpoints."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from app.api.routes.jobs import require_dev_write_key
@@ -46,6 +46,8 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+
+UTC = timezone.utc  # noqa: UP017
 
 router = APIRouter(
     prefix="/api/v1/candidates",
