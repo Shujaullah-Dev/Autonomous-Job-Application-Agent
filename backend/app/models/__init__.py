@@ -10,6 +10,7 @@ from app.models.application_follow_up import (
 from app.models.interview import Interview, InterviewNotification
 from app.models.job import Job
 from app.models.job_embedding import JobEmbedding
+from app.models.notification_recovery import NotificationRecoveryRun
 from app.models.submission_handoff import SubmissionHandoff
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "ApplicationFollowUpEvent",
     "Interview",
     "InterviewNotification",
+    "NotificationRecoveryRun"
 
 ]
