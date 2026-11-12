@@ -2,7 +2,7 @@
 """ Application persistence and lifecycle operations."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -12,6 +12,10 @@ from app.models.application import (
     Application,
     ApplicationDraftRevision,
     ApplicationStatusEvent,
+)
+from app.models.application_follow_up import (
+    ApplicationFollowUp,
+    ApplicationFollowUpEvent,
 )
 
 
@@ -302,6 +306,35 @@ def change_application_status(
             note=event_note,
         )
     )
+
+    # Close outstanding follow-ups when an application ends.
+    if new_status in {"offered", "rejected", "withdrawn"}:
+        pending = db.scalars(
+            select(ApplicationFollowUp)
+            .where(
+                ApplicationFollowUp.application_id
+                == application.id,
+                ApplicationFollowUp.state == "pending",
+            )
+            .with_for_update()
+        ).all()
+
+        for follow_up in pending:
+            follow_up.state = "dismissed"
+            follow_up.resolved_at = datetime.now(UTC)
+            follow_up.resolution_note = (
+                "Automatically closed because the "
+                f"application became {new_status}."
+            )
+
+            db.add(
+                ApplicationFollowUpEvent(
+                    follow_up_id=follow_up.id,
+                    event_type="auto_closed",
+                    actor="system",
+                    note=follow_up.resolution_note,
+                )
+            )
 
     db.commit()
     db.refresh(application)
