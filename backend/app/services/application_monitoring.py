@@ -2,7 +2,7 @@
 """Read-only application and follow-up monitoring."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from sqlalchemy import func, select
@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.application_follow_up import ApplicationFollowUp
+
+UTC = timezone.utc  # noqa: UP017
 
 FollowUpWindow = Literal[
     "all",

@@ -2,7 +2,7 @@
 """Request and response models."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import (
@@ -11,6 +11,8 @@ from pydantic import (
     Field,
     field_validator,
 )
+
+UTC = timezone.utc  # noqa: UP017
 
 FollowUpKind = Literal["status_check", "follow_up"]
 FollowUpState = Literal[

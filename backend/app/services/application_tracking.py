@@ -1,8 +1,7 @@
-
 """ Application persistence and lifecycle operations."""
 
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -17,6 +16,9 @@ from app.models.application_follow_up import (
     ApplicationFollowUp,
     ApplicationFollowUpEvent,
 )
+from app.models.interview import Interview, InterviewNotification
+
+UTC = timezone.utc  # noqa: UP017
 
 
 class ApplicationNotFound(Exception):
@@ -335,6 +337,31 @@ def change_application_status(
                     note=follow_up.resolution_note,
                 )
             )
+
+        scheduled_interviews = db.scalars(
+            select(Interview)
+            .where(
+                Interview.application_id == application.id,
+                Interview.status == "scheduled",
+            )
+            .with_for_update()
+        ).all()
+
+        for interview in scheduled_interviews:
+            interview.status = "cancelled"
+            interview.version += 1
+
+            pending_notifications = db.scalars(
+                select(InterviewNotification).where(
+                    InterviewNotification.interview_id == interview.id,
+                    InterviewNotification.state.in_(
+                        ["scheduled", "available"]
+                    ),
+                )
+            ).all()
+
+            for notification in pending_notifications:
+                notification.state = "cancelled"
 
     db.commit()
     db.refresh(application)
