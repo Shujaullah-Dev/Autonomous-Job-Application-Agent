@@ -5,6 +5,7 @@ from app.models.application import (
 )
 from app.models.job import Job
 from app.models.job_embedding import JobEmbedding
+from app.models.submission_handoff import SubmissionHandoff
 
 __all__ = [
     "Application",
@@ -12,4 +13,5 @@ __all__ = [
     "ApplicationStatusEvent",
     "Job",
     "JobEmbedding",
+    "SubmissionHandoff",
 ]
