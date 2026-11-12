@@ -7,7 +7,15 @@ Revises: 91d44bafc0b0
 
 import sqlalchemy as sa
 from alembic import op
-from app.models.job_embedding import SupabaseVector
+from sqlalchemy.types import UserDefinedType
+
+
+class SupabaseVector(UserDefinedType):
+    cache_ok = True
+
+    def get_col_spec(self, **kw):
+        return "extensions.vector(384)"
+
 
 revision = "d12semantic01"
 down_revision = "91d44bafc0b0"

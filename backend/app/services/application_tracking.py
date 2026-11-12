@@ -2,7 +2,7 @@
 """ Application persistence and lifecycle operations."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -277,7 +277,7 @@ def change_application_status(
     if new_status == "submitted":
         # Record only what the API caller has reported.
         application.submitted_at = datetime.now(
-            UTC
+            timezone.utc  # noqa: UP017
         )
 
         prefix = (

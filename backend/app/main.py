@@ -28,6 +28,9 @@ from app.api.routes.jobs import router as jobs_router
 from app.api.routes.resume_imports import router as resume_imports_router
 from app.api.routes.resumes import router as resumes_router
 from app.api.routes.skills import router as skills_router
+from app.api.routes.submission_handoffs import (
+    router as submission_handoffs_router,
+)
 from app.core.config import settings
 from app.db.session import get_db
 
@@ -49,6 +52,7 @@ app.include_router(job_explanations_router)
 app.include_router(job_workflows_router)
 app.include_router(application_materials_router)
 app.include_router(application_tracking_router)
+app.include_router(submission_handoffs_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:
