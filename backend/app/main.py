@@ -5,6 +5,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.routes.application_follow_ups import (
+    router as application_follow_ups_router,
+)
 from app.api.routes.application_materials import (
     router as application_materials_router,
 )
@@ -53,6 +56,7 @@ app.include_router(job_workflows_router)
 app.include_router(application_materials_router)
 app.include_router(application_tracking_router)
 app.include_router(submission_handoffs_router)
+app.include_router(application_follow_ups_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:
