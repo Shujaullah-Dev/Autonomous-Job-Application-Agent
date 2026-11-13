@@ -2,7 +2,7 @@
 """Readiness and notification recovery API tests."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,6 +18,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+
+UTC = timezone.utc  # noqa: UP017
 
 HEADERS = {"X-Dev-Job-Key": "test-secret"}
 

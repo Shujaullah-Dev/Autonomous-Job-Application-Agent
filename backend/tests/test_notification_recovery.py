@@ -2,7 +2,7 @@
 """Recovery service tests with a disposable SQLite database."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from app.db.base import Base
@@ -18,6 +18,8 @@ from app.services.notification_recovery import (
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+
+UTC = timezone.utc  # noqa: UP017
 
 NOW = datetime(2030, 1, 1, 12, tzinfo=UTC)
 
