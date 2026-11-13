@@ -1,0 +1,109 @@
+
+name: Container CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-smoke:
+    name: Docker build and smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Create CI-only environment
+        run: |
+          printf '%s\n' \
+            'DATABASE_URL=postgresql+psycopg://ci:ci@127.0.0.1:5432/ci' \
+            'DEV_JOB_WRITE_KEY=ci-placeholder-not-secret' \
+            'RESUME_AI_ENABLED=false' \
+            'LANGCHAIN_EXPLANATIONS_ENABLED=false' \
+            'APPLICATION_DRAFTS_AI_ENABLED=false' \
+            'LANGSMITH_TRACING=false' \
+            'HOST_API_PORT=8000' \
+            > .env
+
+      - name: Validate Docker Compose
+        run: docker compose config --quiet
+
+      - name: Configure Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and load FastAPI image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          push: false
+
+          # Must match image: in existing compose.yaml.
+          tags: ai-job-agent:day22
+
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+
+      - name: Start Docker Compose
+        run: docker compose up -d --no-build api
+
+      - name: Verify container and FastAPI liveness
+        run: |
+          for attempt in $(seq 1 40); do
+            if docker compose exec -T api \
+              python -m app.scripts.smoke_deployment \
+              --skip-database; then
+              echo "PASS: Container API is responding"
+              exit 0
+            fi
+
+            echo "API not ready yet; retrying"
+            sleep 3
+          done
+
+          echo "FAIL: Docker API did not become ready"
+          exit 1
+
+      - name: Verify OpenAPI schema is available
+        run: |
+          docker compose exec -T api python -c "
+          import json
+          from urllib.request import urlopen
+
+          with urlopen(
+              'http://127.0.0.1:8000/openapi.json',
+              timeout=5,
+          ) as response:
+              schema = json.load(response)
+
+          paths = schema['paths']
+          assert '/health' in paths
+          assert '/api/v1/ops/deployment' in paths
+          assert '/api/v1/ops/readiness' in paths
+
+          print('PASS: Required FastAPI routes registered')
+          "
+
+      - name: Show container logs if a step fails
+        if: failure()
+        run: docker compose logs --tail=80 api
+
+      - name: Stop test containers
+        if: always()
+        run: docker compose down
