@@ -1,0 +1,54 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: ai-job-agent:day22
+
+    # Use your existing Supabase/Groq settings at runtime.
+    env_file:
+      - .env
+
+    environment:
+      APP_ENV: development
+      DEBUG: "false"
+      CONTAINERIZED: "1"
+      HOME: /home/app
+      HF_HOME: /home/app/.cache/huggingface
+      PYTHONUNBUFFERED: "1"
+
+    # Restrict host access to this laptop.
+    ports:
+      - "127.0.0.1:${HOST_API_PORT:-8000}:8000"
+
+    # Container hardening.
+    user: "10001:10001"
+    init: true
+    read_only: true
+
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+
+    volumes:
+      - huggingface_cache:/home/app/.cache
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    pids_limit: 256
+
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  huggingface_cache:
