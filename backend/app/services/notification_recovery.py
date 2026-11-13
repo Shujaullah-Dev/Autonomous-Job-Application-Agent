@@ -3,7 +3,7 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -12,6 +12,8 @@ from app.models.application import Application
 from app.models.candidate import CandidateProfile
 from app.models.interview import Interview, InterviewNotification
 from app.models.notification_recovery import NotificationRecoveryRun
+
+UTC = timezone.utc  # noqa: UP017
 
 
 class RecoveryCandidateNotFound(Exception):

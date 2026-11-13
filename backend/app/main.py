@@ -15,6 +15,9 @@ from app.api.routes.application_tracking import (
     router as application_tracking_router,
 )
 from app.api.routes.candidates import router as candidates_router
+from app.api.routes.deployment import (
+    router as deployment_router,
+)
 from app.api.routes.education import router as education_router
 from app.api.routes.experience import router as experience_router
 from app.api.routes.interviews import router as interviews_router
@@ -63,6 +66,7 @@ app.include_router(submission_handoffs_router)
 app.include_router(application_follow_ups_router)
 app.include_router(interviews_router)
 app.include_router(notification_recovery_router)
+app.include_router(deployment_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:

@@ -1,0 +1,48 @@
+# Secrets must never enter the build context.
+.env
+.env.*
+!.env.example
+
+# Git history and local development files.
+.git
+.github
+.venv
+venv
+env
+.vscode
+.idea
+
+# Python caches and test artifacts.
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Candidate data and generated files.
+uploads
+storage
+logs
+tmp
+temp
+docker-data
+
+# Local databases.
+*.db
+*.sqlite
+*.sqlite3
+
+# Frontend/build outputs.
+node_modules
+.next
+dist
+build
+
+# Docker does not need tests or documentation at runtime.
+backend/tests
+docs
+
+# Local editor/system files.
+.DS_Store
+Thumbs.db

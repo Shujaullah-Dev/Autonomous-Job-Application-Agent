@@ -2,7 +2,7 @@
 """Development-only readiness and recovery endpoints."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from app.api.routes.jobs import require_dev_write_key
@@ -26,6 +26,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+
+UTC = timezone.utc  # noqa: UP017
 
 router = APIRouter(
     tags=["Reliability and Recovery"],
