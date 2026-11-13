@@ -1,0 +1,89 @@
+
+name: Backend CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python tests and quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      # CI-only placeholder. No live Supabase access.
+      DATABASE_URL: postgresql+psycopg://ci:ci@127.0.0.1:5432/ci
+      DEV_JOB_WRITE_KEY: ci-placeholder-not-secret
+      APP_ENV: development
+
+      # Never call external AI services in ordinary CI.
+      RESUME_AI_ENABLED: "false"
+      LANGCHAIN_EXPLANATIONS_ENABLED: "false"
+      APPLICATION_DRAFTS_AI_ENABLED: "false"
+      GROQ_API_KEY: ""
+      LANGSMITH_TRACING: "false"
+      HF_HUB_OFFLINE: "1"
+      TOKENIZERS_PARALLELISM: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Verify dependency compatibility
+        run: python -m pip check
+
+      - name: Check formatting and imports with Ruff
+        run: python -m ruff check .
+
+      - name: Run complete pytest suite
+        run: python -m pytest -q
+
+      - name: Validate Alembic revision graph
+        run: |
+          python - <<'PY'
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+
+          config = Config("alembic.ini")
+          heads = ScriptDirectory.from_config(config).get_heads()
+
+          print("Migration heads:", heads)
+
+          if len(heads) != 1:
+              raise SystemExit(
+                  "Expected exactly one Alembic head"
+              )
+
+          print("PASS: Single migration head")
+          PY
+
+      - name: Verify committed Git whitespace
+        run: git diff --check HEAD^ HEAD
