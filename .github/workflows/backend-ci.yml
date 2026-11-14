@@ -84,6 +84,10 @@ jobs:
 
           print("PASS: Single migration head")
           PY
+      - name: Report historical migration saftey
+        run: |
+            PYTHONPATH=backend \
+              python -m app.scripts.audit_migrations --jason
 
       - name: Verify committed Git whitespace
         run: git diff --check HEAD^ HEAD
