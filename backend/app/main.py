@@ -35,6 +35,9 @@ from app.api.routes.jobs import router as jobs_router
 from app.api.routes.notification_recovery import (
     router as notification_recovery_router,
 )
+from app.api.routes.release_readiness import (
+    router as release_readiness_router,
+)
 from app.api.routes.resume_imports import router as resume_imports_router
 from app.api.routes.resumes import router as resumes_router
 from app.api.routes.skills import router as skills_router
@@ -49,7 +52,8 @@ app = FastAPI(
     debug=settings.debug,
 )
 
-app.include_router(candidates_router)
+# app.include_router(candidates_router)
+app.include_router(candidates_router, prefix="/api/v1", tags=["candidates"])
 app.include_router(skills_router)
 app.include_router(experience_router)
 app.include_router(education_router)
@@ -67,6 +71,7 @@ app.include_router(application_follow_ups_router)
 app.include_router(interviews_router)
 app.include_router(notification_recovery_router)
 app.include_router(deployment_router)
+app.include_router(release_readiness_router)
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict[str, str]:
