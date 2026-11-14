@@ -87,7 +87,7 @@ jobs:
       - name: Report historical migration saftey
         run: |
             PYTHONPATH=backend \
-              python -m app.scripts.audit_migrations --jason
+              python -m app.scripts.audit_migrations --json
 
       - name: Verify committed Git whitespace
         run: git diff --check HEAD^ HEAD
