@@ -53,7 +53,7 @@ app = FastAPI(
 )
 
 # app.include_router(candidates_router)
-app.include_router(candidates_router, prefix="/api/v1", tags=["candidates"])
+app.include_router(candidates_router)
 app.include_router(skills_router)
 app.include_router(experience_router)
 app.include_router(education_router)
