@@ -13,12 +13,12 @@ from app.models.application import Application
 from app.models.candidate import CandidateProfile
 from app.models.job import Job
 from app.models.skill import CandidateSkill
+from app.services.application_tracking import create_tracked_application
 from app.services.job_workflow_graph import build_job_workflow
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
-from app.services.application_tracking import create_tracked_application
 
 HEADERS = {"X-Dev-Job-Key": "day24-test-key"}
 
