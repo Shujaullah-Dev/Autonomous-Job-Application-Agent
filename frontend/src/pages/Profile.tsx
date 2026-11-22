@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, X, FileText } from 'lucide-react'
 import { useDemo } from '../app/store'
+import { useAuth } from '../features/auth/AuthProvider'
 import { Alert } from '../components/ui'
 import { api, type ApiSchema } from '../lib/api'
 
@@ -17,6 +18,7 @@ const schema = z.object({
 })
 export function Profile({ onboarding = false }: { onboarding?: boolean }) {
   const { state, setState } = useDemo()
+  const { demo } = useAuth()
   const [skills, setSkills] = useState(state.profile.skills)
   const [skill, setSkill] = useState('')
   const [experiences, setExperiences] = useState(state.profile.experiences)
@@ -49,6 +51,12 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
       )
     ) {
       setMessage('An end date cannot be before its start date.')
+      return
+    }
+    if (demo) {
+      setState((s) => ({ ...s, profile: { ...values, skills, experiences, educations } }))
+      setMessage('Profile saved for this demo visit.')
+      if (onboarding) navigate('/resume')
       return
     }
     void (async () => {

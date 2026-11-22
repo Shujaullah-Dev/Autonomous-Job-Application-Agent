@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowUpRight, Check, MapPin, Search, SlidersHorizontal }
 import { useState } from 'react'
 import { api, safeUrl, type ApiSchema, type Job } from '../lib/api'
 import { useDemo } from '../app/store'
+import { useAuth } from '../features/auth/AuthProvider'
 import { match } from '../lib/demo'
 import { Alert, Badge, EmptyState, Skeleton } from '../components/ui'
 
@@ -34,15 +35,38 @@ export function Jobs() {
   ]) {
     if (params.get(key)) queryParams.set(key, params.get(key)!)
   }
+  const { state } = useDemo()
+  const { demo } = useAuth()
   const query = useQuery({
     queryKey: ['jobs', queryParams.toString()],
-    enabled: true,
+    enabled: !demo,
     queryFn: ({ signal }) =>
       api<ApiSchema['JobListResponse']>(`/api/v1/jobs?${queryParams}`, { signal }),
   })
-  const rows = query.data?.items || []
-  const total = query.data?.total || 0
-  const jobs = rows
+  const q = (params.get('q') || '').trim().toLowerCase()
+  const company = (params.get('company') || '').trim().toLowerCase()
+  const location = (params.get('location') || '').trim().toLowerCase()
+  const workMode = params.get('work_mode')
+  const minimumSalary = Number(params.get('minimum_salary')) || 0
+  const currency = params.get('salary_currency')
+  const demoMatches = state.jobs
+    .filter((job) => {
+      if (q && !`${job.title} ${job.company_name} ${job.description}`.toLowerCase().includes(q))
+        return false
+      if (company && !job.company_name.toLowerCase().includes(company)) return false
+      if (location && !(job.location || '').toLowerCase().includes(location)) return false
+      if (workMode && job.work_mode !== workMode) return false
+      if (minimumSalary) {
+        if (job.salary_min == null || job.salary_min < minimumSalary) return false
+        if (currency && job.salary_currency !== currency) return false
+      }
+      return true
+    })
+    .sort((a, b) => (params.get('sort') === 'title' ? a.title.localeCompare(b.title) : 0))
+  const jobs = demo ? demoMatches.slice((page - 1) * 6, page * 6) : query.data?.items || []
+  const total = demo ? demoMatches.length : query.data?.total || 0
+  const pending = !demo && query.isPending
+  const error = demo ? undefined : query.error
   return (
     <>
       <div className="page-heading">
@@ -138,11 +162,11 @@ export function Jobs() {
           </button>
         </div>
       )}
-      {query.isPending ? (
+      {pending ? (
         <Skeleton />
-      ) : query.isError ? (
+      ) : error ? (
         <Alert kind="error">
-          {query.error.message}{' '}
+          {error.message}{' '}
           <button className="text-button" onClick={() => query.refetch()}>
             Try again
           </button>
