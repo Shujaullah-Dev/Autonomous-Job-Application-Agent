@@ -1,8 +1,10 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, MapPin, Search, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Check, MapPin, Search, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { api, safeUrl, type ApiSchema, type Job } from '../lib/api'
+import { useDemo } from '../app/store'
+import { match } from '../lib/demo'
 import { Alert, Badge, EmptyState, Skeleton } from '../components/ui'
 
 function salary(job: Job) {
@@ -212,6 +214,8 @@ export function Jobs() {
 }
 export function JobDetail() {
   const { jobId } = useParams()
+  const { state } = useDemo()
+  const demo = state.profile.skills.length > 0
   const query = useQuery({
     queryKey: ['job', jobId],
     enabled: /^\d+$/.test(jobId || ''),
