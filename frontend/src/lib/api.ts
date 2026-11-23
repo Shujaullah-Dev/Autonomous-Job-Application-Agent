@@ -22,50 +22,56 @@ export const errorMessage = (status: number) =>
     503: 'The service is unavailable. Try again later.',
   })[status] ?? 'The request failed. Try again later.'
 
+const baseUrl = () =>
+  (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
+
+/**
+ * Accept only relative paths this app owns. Absolute URLs, protocol-relative
+ * URLs and traversal segments would send the auth token somewhere else.
+ */
+export function assertApiPath(path: string): string {
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    throw new ApiError(403, 'Only relative API paths are allowed.')
+  }
+  const unsafeCharacter = [...path].some((character) => {
+    const code = character.codePointAt(0) ?? 0
+    return code < 0x20 || code === 0x7f
+  })
+  if (unsafeCharacter || path.includes('\\') || path.split(/[?#]/)[0].split('/').includes('..')) {
+    throw new ApiError(403, 'This API path is not allowed.')
+  }
+  if (!/^\/(?:health(?:\/db)?|api\/v1\/[A-Za-z0-9._~\-/]+)(?:\?[^#]*)?$/.test(path)) {
+    throw new ApiError(403, 'This API path is not allowed.')
+  }
+  return path
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {},
   accessToken?: string,
 ): Promise<T> {
-  const method = (options.method || 'GET').toUpperCase()
-  const publicRoute =
-    /^\/health$|^\/api\/v1\/jobs(?:\?[^#]*|\/\d+)?$/.test(path) && ['GET'].includes(method)
-  const candidateRoute =
-    /^\/api\/v1\/candidates(?:\/[0-9a-f-]{36}(?:\/(?:skills(?:\/[0-9a-f-]{36})?|experiences(?:\/[0-9a-f-]{36})?|education(?:\/[0-9a-f-]{36})?|resume\/(?:preview|import)))?)?$/.test(
-      path,
-    )
-  const candidateCreate = path === '/api/v1/candidates' && method === 'POST'
-  const candidateRead =
-    /^\/api\/v1\/candidates\/[0-9a-f-]{36}$/.test(path) && ['GET', 'PATCH'].includes(method)
-  const candidateSubresource =
-    candidateRoute && /\/(skills|experiences|education|resume\/preview|resume\/import)/.test(path)
-  if (!(publicRoute || candidateCreate || candidateRead || candidateSubresource)) {
-    throw new ApiError(
-      403,
-      'This endpoint requires the backend development key or account ownership support.',
-    )
-  }
+  assertApiPath(path)
   const headers = new Headers(options.headers)
   const currentToken =
     accessToken ?? (await supabase?.auth.getSession())?.data.session?.access_token
   if (currentToken) headers.set('Authorization', `Bearer ${currentToken}`)
   let response: Response
   try {
-    response = await fetch(
-      `${(import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')}${path}`,
-      {
-        ...options,
-        headers,
-        signal: options.signal ?? AbortSignal.timeout(15000),
-        credentials: 'omit',
-      },
-    )
+    response = await fetch(`${baseUrl()}${path}`, {
+      ...options,
+      headers,
+      signal: options.signal ?? AbortSignal.timeout(15000),
+      credentials: 'omit',
+    })
   } catch (error) {
     if (options.signal?.aborted) throw error
     throw new ApiError(0, 'Cannot reach the API. Check your connection and try again.')
   }
   if (!response.ok) throw new ApiError(response.status, errorMessage(response.status))
-  return response.json() as Promise<T>
+  if (response.status === 204) return undefined as T
+  const body = await response.text()
+  return (body ? JSON.parse(body) : undefined) as T
 }
 export function safeUrl(value: string | null | undefined): string | undefined {
   if (!value) return undefined

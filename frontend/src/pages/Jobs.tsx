@@ -239,7 +239,7 @@ export function Jobs() {
 export function JobDetail() {
   const { jobId } = useParams()
   const { state } = useDemo()
-  const demo = state.profile.skills.length > 0
+  const { demo } = useAuth()
   const query = useQuery({
     queryKey: ['job', jobId],
     enabled: /^\d+$/.test(jobId || ''),

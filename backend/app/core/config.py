@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    frontend_url: str = "http://localhost:3000"
 
     database_url: str
     dev_job_write_key: str
@@ -23,6 +24,23 @@ class Settings(BaseSettings):
     resume_ai_enabled: bool = False
     groq_timeout_seconds: float = 30.0
     groq_max_chars: int = 20000
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Origins allowed to call this API from a browser."""
+
+        origins = [
+            self.frontend_url.rstrip("/"),
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+        seen: list[str] = []
+        for origin in origins:
+            if origin and origin not in seen:
+                seen.append(origin)
+        return seen
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",

@@ -3,13 +3,20 @@ import { api, safeUrl, validateResume, errorMessage } from './api'
 
 afterEach(() => vi.unstubAllGlobals())
 describe('API boundaries', () => {
-  it('blocks every private route and write before making a network call', async () => {
+  it('rejects paths that leave the API before making a network call', async () => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
-    await expect(api('/api/v1/candidates/arbitrary-id')).rejects.toThrow('ownership')
-    await expect(api('/api/v1/jobs', { method: 'POST' })).rejects.toThrow('ownership')
-    await expect(api('/api/v1/jobs/1/../../candidates')).rejects.toThrow()
+    await expect(api('https://evil.example/api/v1/jobs')).rejects.toThrow('relative')
+    await expect(api('//evil.example/api/v1/jobs')).rejects.toThrow('relative')
+    await expect(api('/api/v1/jobs/1/../../candidates')).rejects.toThrow('not allowed')
+    await expect(api('/api/v1/\\..\\secrets')).rejects.toThrow('not allowed')
     expect(fetch).not.toHaveBeenCalled()
+  })
+  it('treats empty and 204 responses as no content', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })))
+    await expect(
+      api('/api/v1/candidates/a/skills/b', { method: 'DELETE' }),
+    ).resolves.toBeUndefined()
   })
   it.each([401, 403, 404, 409, 422, 429, 503])(
     'redacts server error bodies for %s',
@@ -21,12 +28,13 @@ describe('API boundaries', () => {
       await expect(api('/api/v1/jobs')).rejects.toThrow(errorMessage(status))
     },
   )
-  it('sends bearer authentication when given and keeps cookies out', async () => {
+  it('sends bearer authentication and keeps cookies out', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('{}'))
     vi.stubGlobal('fetch', fetch)
     await api('/api/v1/jobs', {}, 'sample-token')
     expect(fetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer sample-token')
     expect(fetch.mock.calls[0][1].credentials).toBe('omit')
+    expect(fetch.mock.calls[0][1].headers.get('X-Dev-Job-Key')).toBeNull()
   })
   it('reports network failures safely', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('secret internal detail')))

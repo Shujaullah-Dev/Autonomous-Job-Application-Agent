@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -7,7 +7,7 @@ import { Plus, X, FileText } from 'lucide-react'
 import { useDemo } from '../app/store'
 import { useAuth } from '../features/auth/AuthProvider'
 import { Alert } from '../components/ui'
-import { api, type ApiSchema } from '../lib/api'
+import { api, ApiError, type ApiSchema } from '../lib/api'
 
 const schema = z.object({
   full_name: z.string().trim().min(1, 'Enter your name.').max(150),
@@ -18,7 +18,7 @@ const schema = z.object({
 })
 export function Profile({ onboarding = false }: { onboarding?: boolean }) {
   const { state, setState } = useDemo()
-  const { demo } = useAuth()
+  const { demo, session } = useAuth()
   const [skills, setSkills] = useState(state.profile.skills)
   const [skill, setSkill] = useState('')
   const [experiences, setExperiences] = useState(state.profile.experiences)
@@ -28,11 +28,38 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: state.profile,
   })
+  // Re-open the stored API record instead of re-saving sample values.
+  useEffect(() => {
+    if (demo || !session) return
+    const storedId = sessionStorage.getItem(`job-agent-candidate-id:${session.user.id}`)
+    if (!storedId) return
+    void (async () => {
+      try {
+        const candidate = await api<ApiSchema['CandidateResponse']>(
+          `/api/v1/candidates/${storedId}`,
+        )
+        reset({
+          full_name: candidate.full_name,
+          email: candidate.email,
+          location: candidate.location ?? '',
+          years_experience: candidate.years_experience ?? 0,
+          professional_summary: candidate.professional_summary ?? '',
+        })
+        const rows = await api<ApiSchema['SkillResponse'][]>(
+          `/api/v1/candidates/${storedId}/skills`,
+        )
+        setSkills(rows.map((row) => row.name))
+      } catch {
+        // A missing or unreachable record leaves the current form values intact.
+      }
+    })()
+  }, [demo, session, reset])
   const submit = handleSubmit((values) => {
     if (
       experiences.some(
@@ -61,9 +88,20 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
     }
     void (async () => {
       try {
-        const storedId = sessionStorage.getItem('job-agent-candidate-id')
-        const candidate = storedId
-          ? await api<ApiSchema['CandidateResponse']>(`/api/v1/candidates/${storedId}`, {
+        // One candidate per signed-in account, so a second user never patches
+        // the first user's record.
+        const storageKey = `job-agent-candidate-id:${session?.user.id ?? 'anonymous'}`
+        const storedId = sessionStorage.getItem(storageKey)
+        let candidate: ApiSchema['CandidateResponse'] | null = null
+        if (storedId) {
+          try {
+            candidate = await api<ApiSchema['CandidateResponse']>(`/api/v1/candidates/${storedId}`)
+          } catch (e) {
+            if (!(e instanceof ApiError) || e.status !== 404) throw e
+          }
+        }
+        candidate = candidate
+          ? await api<ApiSchema['CandidateResponse']>(`/api/v1/candidates/${candidate.id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(values),
@@ -73,17 +111,28 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ...values, phone: null }),
             })
-        sessionStorage.setItem('job-agent-candidate-id', candidate.id)
-        for (const name of skills)
-          await api(`/api/v1/candidates/${candidate.id}/skills`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-          })
-        setState((s) => ({ ...s, profile: { ...values, skills, experiences, educations } }))
-        setMessage(
-          'Profile saved to the API. Keep this browser session to retain the candidate link.',
+        sessionStorage.setItem(storageKey, candidate.id)
+        const stored = await api<ApiSchema['SkillResponse'][]>(
+          `/api/v1/candidates/${candidate.id}/skills`,
         )
+        const wanted = new Set(skills.map((name) => name.toLowerCase()))
+        for (const row of stored) {
+          if (!wanted.has(row.name.toLowerCase()))
+            await api(`/api/v1/candidates/${candidate.id}/skills/${row.id}`, {
+              method: 'DELETE',
+            })
+        }
+        const saved = new Set(stored.map((row) => row.name.toLowerCase()))
+        for (const name of skills) {
+          if (!saved.has(name.toLowerCase()))
+            await api(`/api/v1/candidates/${candidate.id}/skills`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            })
+        }
+        setState((s) => ({ ...s, profile: { ...values, skills, experiences, educations } }))
+        setMessage('Profile saved to the API.')
         if (onboarding) navigate('/resume')
       } catch (e) {
         setMessage((e as Error).message)

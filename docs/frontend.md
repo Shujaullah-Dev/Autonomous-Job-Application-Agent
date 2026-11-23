@@ -95,9 +95,9 @@ The exporter sets an in-memory SQLite URL, disables AI use, prevents Python byte
 
 Workflow, application, handoff, follow-up, interview, and notification endpoints remain blocked because their routers require the server-side development key. Do not place that key in Vite variables or browser requests. To enable the rest of the live journey, the backend must validate Supabase JWTs, map the verified subject to a candidate, enforce ownership on every record and file, and pass two-account isolation tests. The later feature routers also need a production auth dependency to replace the development gate. Once available, implement adapters from the generated API types and preserve server revision/version numbers, resume snapshots, preflight checks, and handoff results.
 
-Other remaining blockers are the absent CORS allowlist configuration, possible in-memory workflow loss on restart, notification visibility depending on the worker, and unresolved migration/release gates. The current frontend exposes the real API calls it can make, reports errors for unavailable operations, and keeps the demo as an optional isolated walkthrough. It does not claim that the remaining live application flow is complete.
+The API now sends an explicit CORS allowlist (`FRONTEND_URL` plus the localhost/127.0.0.1 ports 3000 and 5173) and permits the `Authorization` header, so browser requests from the Vite dev server reach the backend. Other remaining blockers are possible in-memory workflow loss on restart, notification visibility depending on the worker, and unresolved migration/release gates. The current frontend exposes the real API calls it can make, reports errors for unavailable operations, and keeps the demo as an optional isolated walkthrough. It does not claim that the remaining live application flow is complete.
 
-The client cannot fix ownership, missing CORS, migration drift, workflow persistence, or worker scheduling. It does not claim to have verified those systems.
+The client cannot fix ownership, migration drift, workflow persistence, or worker scheduling. It does not claim to have verified those systems.
 
 ## Configuration and privacy
 
