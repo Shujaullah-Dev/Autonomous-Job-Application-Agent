@@ -24,6 +24,14 @@ class CandidateProfile(Base):
         unique=True,
         index=True,
     )
+    # Verified Supabase account subject that owns this profile. NULL means the
+    # profile predates account ownership and may be linked by verified email.
+    owner_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     phone: Mapped[str | None] = mapped_column(
         String(30),
         nullable=True,

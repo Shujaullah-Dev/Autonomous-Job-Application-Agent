@@ -21,6 +21,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/candidates/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Own Candidate
+         * @description Return the profile owned by the verified account.
+         *
+         *     A profile created before ownership existed is linked only when its email
+         *     matches the verified account email.
+         */
+        get: operations["read_own_candidate_api_v1_candidates_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/candidates/{candidate_id}": {
         parameters: {
             query?: never;
@@ -2555,7 +2578,9 @@ export interface operations {
     create_candidate_api_v1_candidates_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2585,10 +2610,43 @@ export interface operations {
             };
         };
     };
+    read_own_candidate_api_v1_candidates_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_candidate_api_v1_candidates__candidate_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -2619,7 +2677,9 @@ export interface operations {
     update_candidate_api_v1_candidates__candidate_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -2654,7 +2714,9 @@ export interface operations {
     list_skills_api_v1_candidates__candidate_id__skills_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -2685,7 +2747,9 @@ export interface operations {
     create_skill_api_v1_candidates__candidate_id__skills_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -2720,7 +2784,9 @@ export interface operations {
     delete_skill_api_v1_candidates__candidate_id__skills__skill_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
                 skill_id: string;
@@ -2750,7 +2816,9 @@ export interface operations {
     update_skill_api_v1_candidates__candidate_id__skills__skill_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
                 skill_id: string;
@@ -2786,7 +2854,9 @@ export interface operations {
     list_experiences_api_v1_candidates__candidate_id__experiences_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -2817,7 +2887,9 @@ export interface operations {
     create_experience_api_v1_candidates__candidate_id__experiences_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -2852,7 +2924,9 @@ export interface operations {
     delete_experience_api_v1_candidates__candidate_id__experiences__experience_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
                 experience_id: string;
@@ -2882,7 +2956,9 @@ export interface operations {
     update_experience_api_v1_candidates__candidate_id__experiences__experience_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
                 experience_id: string;
@@ -2918,7 +2994,9 @@ export interface operations {
     list_education_api_v1_candidates__candidate_id__education_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -2949,7 +3027,9 @@ export interface operations {
     create_education_api_v1_candidates__candidate_id__education_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -2984,7 +3064,9 @@ export interface operations {
     delete_education_api_v1_candidates__candidate_id__education__education_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
                 education_id: string;
@@ -3014,7 +3096,9 @@ export interface operations {
     update_education_api_v1_candidates__candidate_id__education__education_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
                 education_id: string;
@@ -3050,7 +3134,9 @@ export interface operations {
     preview_resume_analysis_api_v1_candidates__candidate_id__resume_preview_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -3097,7 +3183,9 @@ export interface operations {
     import_resume_api_v1_candidates__candidate_id__resume_import_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 candidate_id: string;
             };
@@ -3245,6 +3333,7 @@ export interface operations {
                 limit?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3285,6 +3374,7 @@ export interface operations {
                 limit?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3330,6 +3420,7 @@ export interface operations {
                 offset?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3365,6 +3456,7 @@ export interface operations {
                 use_ai?: boolean;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3399,6 +3491,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3436,6 +3529,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3470,6 +3564,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3508,6 +3603,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3547,6 +3643,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3585,6 +3682,7 @@ export interface operations {
                 offset?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3618,6 +3716,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3652,6 +3751,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3690,6 +3790,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3728,6 +3829,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3762,6 +3864,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3796,6 +3899,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3837,6 +3941,7 @@ export interface operations {
                 offset?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3871,6 +3976,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3914,6 +4020,7 @@ export interface operations {
                 offset?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3947,6 +4054,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -3986,6 +4094,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4019,6 +4128,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4061,6 +4171,7 @@ export interface operations {
                 offset?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4094,6 +4205,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4128,6 +4240,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4166,6 +4279,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4204,6 +4318,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4240,6 +4355,7 @@ export interface operations {
                 limit?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4276,6 +4392,7 @@ export interface operations {
                 limit?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4309,6 +4426,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4343,6 +4461,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path?: never;
@@ -4376,6 +4495,7 @@ export interface operations {
                 limit?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4409,6 +4529,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {
@@ -4448,6 +4569,7 @@ export interface operations {
                 limit?: number;
             };
             header?: {
+                authorization?: string | null;
                 "X-Dev-Job-Key"?: string | null;
             };
             path: {

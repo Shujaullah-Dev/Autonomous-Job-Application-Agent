@@ -5,7 +5,7 @@ import logging
 import uuid
 from typing import Annotated
 
-from app.api.routes.jobs import require_dev_write_key
+from app.core.auth import require_candidate_owner, require_private_access
 from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.job_explanation import JobExplanationResponse
@@ -31,7 +31,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/api/v1/candidates",
     tags=["LangChain Explanations"],
-    dependencies=[Depends(require_dev_write_key)],
+    dependencies=[
+        Depends(require_private_access),
+        Depends(require_candidate_owner),
+    ],
 )
 
 

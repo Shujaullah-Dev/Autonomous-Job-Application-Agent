@@ -1,6 +1,7 @@
 
 import uuid
 
+from app.core.auth import require_candidate_owner
 from app.db.session import get_db
 from app.schemas.resume_import import (
     ResumeImportRequest,
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 router = APIRouter(
     prefix="/api/v1/candidates",
     tags=["Resume Import"],
+    dependencies=[Depends(require_candidate_owner)],
 )
 
 

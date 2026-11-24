@@ -1,5 +1,6 @@
 import uuid
 
+from app.core.auth import require_candidate_owner
 from app.db.session import get_db
 from app.models.candidate import CandidateProfile
 from app.models.experience import WorkExperience
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 router = APIRouter(
     prefix="/api/v1/candidates/{candidate_id}/experiences",
     tags=["Work Experience"],
+    dependencies=[Depends(require_candidate_owner)],
 )
 
 

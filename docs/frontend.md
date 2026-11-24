@@ -32,7 +32,7 @@ The workspace has a dark teal navigation rail, a light gray-green content area, 
 | `frontend/src/components/layout/AppShell.tsx` | Sidebar, mobile navigation, topbar, demo disclosure |
 | `frontend/src/components/ui/index.tsx` | Alerts, empty state, loading skeleton, badges, error boundary, accessible modal |
 | `frontend/src/pages/` | Feature screens and forms |
-| `frontend/src/lib/api.ts` | Public API allowlist, typed request helper, error redaction, file and URL validation |
+| `frontend/src/lib/api.ts` | Route-path guard, typed request helper, error redaction, file and URL validation |
 | `frontend/src/lib/api-types.ts` | Generated FastAPI schema types |
 | `frontend/src/lib/openapi.json` | Snapshot exported from this checkout |
 | `frontend/src/lib/demo.ts` | Fictional fixtures, status rules, revision and handoff guards |
@@ -70,11 +70,11 @@ The shared forms have visible labels, keyboard focus indicators, field errors, a
 
 The current `backend/app/main.py` includes the candidate router without an additional prefix. The effective candidate base path is `/api/v1/candidates`; the roadmap's duplicate-prefix warning does not apply to this checkout.
 
-Candidate profile, skills, experience, education, resume preview, and resume import routes have no verified account ownership dependency. Several later feature routers depend on a shared development gate. Neither meets the roadmap's private-user authorization requirement. No `/me` or equivalent verified identity-to-candidate endpoint exists in the exported contract. The frontend therefore has no UUID entry box, no inferred candidate mapping, and no development-key input.
+Every candidate-scoped router now requires a verified Supabase access token and enforces `candidate_profiles.owner_id`. `GET /api/v1/candidates/me` resolves the profile from the verified account, so the frontend has no UUID entry box, no inferred candidate mapping, and no development-key input. The development key still opens the private routers for local development only, and is refused outside `APP_ENV=development`. Errors, ownership rules and two-account tests are documented in [auth-and-ownership.md](auth-and-ownership.md).
 
-The frontend calls `GET /api/v1/jobs` and `GET /api/v1/jobs/{job_id}` for live listings, including supported filters and pagination. Candidate onboarding calls `POST /api/v1/candidates`, saves the returned candidate ID to `sessionStorage`, updates the profile with `PATCH /api/v1/candidates/{candidate_id}`, and creates skills through the existing skills route. The current backend does not bind that ID to the signed-in Supabase subject or verify ownership. This integration is for isolated local/QA use with synthetic data; a browser-stored candidate UUID is not authentication.
+The frontend calls `GET /api/v1/jobs` and `GET /api/v1/jobs/{job_id}` for live listings, including supported filters and pagination. Candidate onboarding resolves the account profile with `GET /api/v1/candidates/me` first, calls `POST /api/v1/candidates` only when no profile exists, updates it with `PATCH /api/v1/candidates/{candidate_id}`, and creates skills through the existing skills route. The API derives ownership from the verified token subject, so a stored candidate identifier can never select another account's record.
 
-The API helper permits the public job routes and existing candidate/profile, skill, experience, education, and resume route patterns. It never adds `X-Dev-Job-Key`. Endpoints protected by that key remain unavailable from the browser until a verified user contract or trusted server-side proxy exists. Supabase login does not authorize FastAPI requests because the current app does not validate Supabase JWTs.
+The API helper permits the public job routes and existing candidate/profile, skill, experience, education, resume, match, workflow, application, follow-up, interview and notification route patterns. It attaches the current Supabase access token as `Authorization: Bearer`, never adds `X-Dev-Job-Key`, and rejects absolute or traversing paths. The API verifies signature, issuer, audience and expiry before using the token.
 
 Live job query parameters match the exported API: `q`, `company`, `location`, `work_mode`, `employment_type`, `minimum_salary`, `salary_currency`, `limit`, and `offset`. Salary filters require a currency. Title sorting applies to the current page because the API does not expose server sorting. Public list and detail requests use TanStack Query with cancellation, a 15-second timeout, 30-second staleness, and no automatic retries. API errors are mapped to safe UI messages for 401, 403, 404, 409, 422, 429, and 503. Backend response bodies and stack traces are not shown.
 
@@ -93,9 +93,9 @@ The exporter sets an in-memory SQLite URL, disables AI use, prevents Python byte
 
 ### Remaining private integration
 
-Workflow, application, handoff, follow-up, interview, and notification endpoints remain blocked because their routers require the server-side development key. Do not place that key in Vite variables or browser requests. To enable the rest of the live journey, the backend must validate Supabase JWTs, map the verified subject to a candidate, enforce ownership on every record and file, and pass two-account isolation tests. The later feature routers also need a production auth dependency to replace the development gate. Once available, implement adapters from the generated API types and preserve server revision/version numbers, resume snapshots, preflight checks, and handoff results.
+Workflow, application, handoff, follow-up, interview, and notification routers now accept a verified access token and enforce candidate ownership, so they are no longer blocked by the development gate. The remaining gap is the browser client: those screens still run on demo state and have no typed query layer. Adapting each screen to the generated API types is the next frontend task; preserve server revision/version numbers, resume snapshots, preflight checks, and handoff results when doing so.
 
-The API now sends an explicit CORS allowlist (`FRONTEND_URL` plus the localhost/127.0.0.1 ports 3000 and 5173) and permits the `Authorization` header, so browser requests from the Vite dev server reach the backend. Other remaining blockers are possible in-memory workflow loss on restart, notification visibility depending on the worker, and unresolved migration/release gates. The current frontend exposes the real API calls it can make, reports errors for unavailable operations, and keeps the demo as an optional isolated walkthrough. It does not claim that the remaining live application flow is complete.
+The API sends an explicit CORS allowlist (`FRONTEND_URL` plus the localhost/127.0.0.1 ports 3000 and 5173) and permits the `Authorization` header, so browser requests from the Vite dev server reach the backend. Workflow state is durable when `LANGGRAPH_CHECKPOINT_URL` is configured with a PostgreSQL database; otherwise restarting the API can still lose a pending shortlist review. Notification visibility still depends on the worker, and the migration chain still needs repair. The current frontend exposes the real API calls it can make, reports errors for unavailable operations, and keeps the demo as an optional isolated walkthrough. It does not claim that the remaining live application flow is complete.
 
 The client cannot fix ownership, migration drift, workflow persistence, or worker scheduling. It does not claim to have verified those systems.
 
@@ -108,6 +108,10 @@ Copy `frontend/.env.example` to `frontend/.env.local` only when configuring a QA
 | `VITE_API_BASE_URL` | API origin; defaults to `http://127.0.0.1:8000` |
 | `VITE_SUPABASE_URL` | Supabase Auth project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser-safe Supabase publishable/anon key |
+
+Each value must match its counterpart: `VITE_API_BASE_URL` is the backend origin, and the frontend origin must be allowed by the backend CORS list. The backend reads its own repository-root `.env`, where `FRONTEND_URL` defaults to `http://localhost:3000`; the local Vite origins `http://localhost:5173` and `http://127.0.0.1:5173` are always allowed. Restart both servers after changing an origin, and keep the same host form (`127.0.0.1` or `localhost`) in the browser, the CORS list, and the Supabase redirect URLs.
+
+The complete local test plan, including a disposable SQLite database, API smoke requests, CORS checks, and desktop and mobile checklists, is in [testing.md](testing.md).
 
 Only these browser-safe values belong in Vite configuration. Database URLs, provider credentials, service-role keys, JWT verification secrets, and backend development credentials must stay out of the browser. The app does not read the repository's root `.env`.
 
@@ -174,7 +178,7 @@ npx playwright install chromium
 npm run test:e2e -- --workers=1
 ```
 
-Vitest covers confirmation boundaries, version conflicts, terminal states, URL/file validation, safe HTTP errors, private request blocking, calendar escaping/folding, account form errors, profile validation, missing routes, and signed-out guards. Browser scenarios cover sample shortlist → draft edit → review → manual handoff → user-reported submission → follow-up → interview → calendar download → scheduled reminders, plus profile correction, resume validation/import, URL filters, empty results and logout. They run in Chromium at desktop and mobile sizes, with no real employer submissions. External service signup and authenticated two-user integration are intentionally outside this local suite.
+Vitest covers confirmation boundaries, version conflicts, terminal states, URL/file validation, safe HTTP errors, private request blocking, calendar escaping/folding, account form errors, profile validation, missing routes, and signed-out guards. For manual passes on a desktop and a phone, follow [testing.md](testing.md). Browser scenarios cover sample shortlist → draft edit → review → manual handoff → user-reported submission → follow-up → interview → calendar download → scheduled reminders, plus profile correction, resume validation/import, URL filters, empty results and logout. They run in Chromium at desktop and mobile sizes, with no real employer submissions. External service signup and authenticated two-user integration are intentionally outside this local suite.
 
 Frontend CI runs install, lint, typecheck, generated-type drift check, Vitest, build, and browser QA. Failure-only traces/screenshots are retained for seven days. The existing backend workflows are unchanged. Local result counts and visual review evidence are recorded below after verification.
 
@@ -200,7 +204,7 @@ Verified on November 14, 2026:
 | --- | --- |
 | TypeScript | Passed |
 | ESLint | Passed with zero warnings |
-| Vitest | 35 tests passed across four files |
+| Vitest | 36 tests passed across four files |
 | Playwright | Four scenarios passed across desktop Chromium and a 390px mobile viewport |
 | Production build | Passed; feature pages are loaded in separate chunks |
 | Backend diff | Empty; no backend files changed |

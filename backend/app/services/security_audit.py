@@ -10,6 +10,12 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
 from app.api.routes.jobs import require_dev_write_key
+from app.core.auth import (
+    require_candidate_owner,
+    require_private_access,
+    require_user,
+)
+from app.core.config import settings
 
 try:
     from fastapi.routing import iter_route_contexts
@@ -26,14 +32,22 @@ class SecurityAudit:
     production_user_auth_verified: bool
 
 
-def dependency_contains_dev_key(dependant) -> bool:
-    """Recursively check the endpoint's dependencies."""
+GUARDS = (
+    require_dev_write_key,
+    require_private_access,
+    require_user,
+    require_candidate_owner,
+)
 
-    if dependant.call is require_dev_write_key:
+
+def dependency_contains_guard(dependant) -> bool:
+    """Recursively check the endpoint's dependencies for a known guard."""
+
+    if dependant.call in GUARDS:
         return True
 
     return any(
-        dependency_contains_dev_key(child)
+        dependency_contains_guard(child)
         for child in dependant.dependencies
     )
 
@@ -81,7 +95,7 @@ def audit_candidate_routes(app: FastAPI) -> SecurityAudit:
                 f"Missing dependency information for {path}"
             )
 
-        if dependency_contains_dev_key(dependant):
+        if dependency_contains_guard(dependant):
             protected_count += 1
             continue
 
@@ -105,5 +119,5 @@ def audit_candidate_routes(app: FastAPI) -> SecurityAudit:
         routes_without_dev_key=tuple(
             sorted(unprotected_routes)
         ),
-        production_user_auth_verified=False,
+        production_user_auth_verified=settings.identity_configured,
     )

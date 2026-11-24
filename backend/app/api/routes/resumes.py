@@ -2,6 +2,7 @@
 import uuid
 from typing import Annotated
 
+from app.core.auth import require_candidate_owner
 from app.db.session import get_db
 from app.models.candidate import CandidateProfile
 from app.schemas.resume_analysis import (
@@ -29,6 +30,7 @@ from sqlalchemy.orm import Session
 router = APIRouter(
     prefix="/api/v1/candidates",
     tags=["Resumes"],
+    dependencies=[Depends(require_candidate_owner)],
 )
 
 

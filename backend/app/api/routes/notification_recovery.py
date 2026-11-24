@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
-from app.api.routes.jobs import require_dev_write_key
+from app.core.auth import require_candidate_owner, require_private_access
 from app.db.session import get_db
 from app.models.candidate import CandidateProfile
 from app.models.notification_recovery import NotificationRecoveryRun
@@ -31,7 +31,7 @@ UTC = timezone.utc  # noqa: UP017
 
 router = APIRouter(
     tags=["Reliability and Recovery"],
-    dependencies=[Depends(require_dev_write_key)],
+    dependencies=[Depends(require_private_access)],
 )
 
 
@@ -93,6 +93,7 @@ def check_readiness(
 @router.get(
     "/api/v1/candidates/{candidate_id}/notification-recovery/preview",
     response_model=RecoveryResponse,
+    dependencies=[Depends(require_candidate_owner)],
 )
 def preview_notification_recovery(
     candidate_id: uuid.UUID,
@@ -127,6 +128,7 @@ def preview_notification_recovery(
 @router.post(
     "/api/v1/candidates/{candidate_id}/notification-recovery/apply",
     response_model=RecoveryResponse,
+    dependencies=[Depends(require_candidate_owner)],
 )
 def apply_notification_recovery(
     candidate_id: uuid.UUID,
@@ -162,6 +164,7 @@ def apply_notification_recovery(
 @router.get(
     "/api/v1/candidates/{candidate_id}/notification-recovery/runs",
     response_model=RecoveryRunList,
+    dependencies=[Depends(require_candidate_owner)],
 )
 def list_recovery_runs(
     candidate_id: uuid.UUID,

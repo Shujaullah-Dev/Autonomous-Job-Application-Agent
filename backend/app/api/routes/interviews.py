@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from app.api.routes.jobs import require_dev_write_key
+from app.core.auth import require_candidate_owner, require_private_access
 from app.db.session import get_db
 from app.models.application import Application
 from app.models.interview import Interview, InterviewNotification
@@ -50,7 +50,10 @@ UTC = timezone.utc  # noqa: UP017
 router = APIRouter(
     prefix="/api/v1/candidates",
     tags=["Interviews and Notifications"],
-    dependencies=[Depends(require_dev_write_key)],
+    dependencies=[
+        Depends(require_private_access),
+        Depends(require_candidate_owner),
+    ],
 )
 
 

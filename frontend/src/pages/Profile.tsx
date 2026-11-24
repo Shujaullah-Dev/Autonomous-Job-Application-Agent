@@ -34,16 +34,23 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
     resolver: zodResolver(schema),
     defaultValues: state.profile,
   })
-  // Re-open the stored API record instead of re-saving sample values.
+  // Re-open the record the API resolves for this account instead of re-saving
+  // sample values.
   useEffect(() => {
     if (demo || !session) return
-    const storedId = sessionStorage.getItem(`job-agent-candidate-id:${session.user.id}`)
-    if (!storedId) return
     void (async () => {
+      const storedId = sessionStorage.getItem(`job-agent-candidate-id:${session.user.id}`)
       try {
-        const candidate = await api<ApiSchema['CandidateResponse']>(
-          `/api/v1/candidates/${storedId}`,
-        )
+        let candidate: ApiSchema['CandidateResponse']
+        try {
+          // The server derives the profile from the verified account, so a
+          // stale identifier cannot select another candidate's record.
+          candidate = await api<ApiSchema['CandidateResponse']>('/api/v1/candidates/me')
+        } catch {
+          if (!storedId) return
+          candidate = await api<ApiSchema['CandidateResponse']>(`/api/v1/candidates/${storedId}`)
+        }
+        sessionStorage.setItem(`job-agent-candidate-id:${session.user.id}`, candidate.id)
         reset({
           full_name: candidate.full_name,
           email: candidate.email,
@@ -52,7 +59,7 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
           professional_summary: candidate.professional_summary ?? '',
         })
         const rows = await api<ApiSchema['SkillResponse'][]>(
-          `/api/v1/candidates/${storedId}/skills`,
+          `/api/v1/candidates/${candidate.id}/skills`,
         )
         setSkills(rows.map((row) => row.name))
       } catch {
@@ -98,6 +105,17 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
             candidate = await api<ApiSchema['CandidateResponse']>(`/api/v1/candidates/${storedId}`)
           } catch (e) {
             if (!(e instanceof ApiError) || e.status !== 404) throw e
+            candidate = null
+          }
+        }
+        if (!candidate) {
+          try {
+            // A saved account profile already exists, so reuse it instead of
+            // creating a second one.
+            candidate = await api<ApiSchema['CandidateResponse']>('/api/v1/candidates/me')
+          } catch (e) {
+            if (!(e instanceof ApiError) || e.status !== 404) throw e
+            candidate = null
           }
         }
         candidate = candidate

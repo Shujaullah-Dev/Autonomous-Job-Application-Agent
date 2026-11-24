@@ -2,8 +2,9 @@
 """Start, inspect and resume LangGraph workflows."""
 
 import uuid
+from typing import Any
 
-from app.api.routes.jobs import require_dev_write_key
+from app.core.auth import require_candidate_owner, require_private_access
 from app.schemas.job_workflow import (
     WorkflowResponse,
     WorkflowReviewRequest,
@@ -14,6 +15,10 @@ from app.services.explanation_context import (
     IncompleteCandidateProfileError,
 )
 from app.services.job_workflow_graph import build_job_workflow
+from app.services.workflow_checkpoint import (
+    CheckpointUnavailable,
+    build_workflow_checkpointer,
+)
 from app.services.workflow_recommendations import (
     load_workflow_recommendations,
 )
@@ -29,11 +34,35 @@ from sqlalchemy.exc import SQLAlchemyError
 router = APIRouter(
     prefix="/api/v1/candidates",
     tags=["LangGraph Workflows"],
-    dependencies=[Depends(require_dev_write_key)],
+    dependencies=[
+        Depends(require_private_access),
+        Depends(require_candidate_owner),
+    ],
 )
 
-# Shared within ONE development server process only.
-_graph = build_job_workflow(load_workflow_recommendations)
+_graph: Any | None = None
+
+
+def get_graph() -> Any:
+    """Build the graph once, using durable checkpoints when configured."""
+
+    global _graph
+
+    if _graph is None:
+        try:
+            checkpointer = build_workflow_checkpointer()
+        except CheckpointUnavailable as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from None
+
+        _graph = build_job_workflow(
+            load_workflow_recommendations,
+            checkpointer=checkpointer,
+        )
+
+    return _graph
 
 
 def workflow_config(workflow_id: uuid.UUID) -> dict:
@@ -48,7 +77,7 @@ def workflow_response(
     candidate_id: uuid.UUID,
     workflow_id: uuid.UUID,
 ) -> WorkflowResponse:
-    snapshot = _graph.get_state(
+    snapshot = get_graph().get_state(
         workflow_config(workflow_id)
     )
 
@@ -112,7 +141,7 @@ def start_workflow(
     }
 
     try:
-        _graph.invoke(
+        get_graph().invoke(
             initial_state,
             workflow_config(workflow_id),
         )
@@ -188,7 +217,7 @@ def review_workflow(
             detail="Selected job is not in the shortlist",
         )
 
-    _graph.invoke(
+    get_graph().invoke(
         Command(
             resume=payload.model_dump()
         ),

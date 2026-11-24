@@ -18,6 +18,18 @@ class Settings(BaseSettings):
     langchain_explanations_enabled: bool = False
     application_drafts_ai_enabled: bool = False
     
+    # Supabase Auth identity verification. Configure SUPABASE_URL, or set the
+    # JWT secret/JWKS URL explicitly. No value here belongs in the frontend.
+    supabase_url: str = ""
+    supabase_jwt_secret: str = ""
+    supabase_jwks_url: str = ""
+    supabase_jwt_issuer: str = ""
+    supabase_jwt_audience: str = "authenticated"
+
+    # Durable LangGraph checkpoints. Without a PostgreSQL URL the workflow
+    # graph keeps its in-process memory saver.
+    langgraph_checkpoint_url: str = ""
+
     # Groq
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-20b"
@@ -41,6 +53,32 @@ class Settings(BaseSettings):
             if origin and origin not in seen:
                 seen.append(origin)
         return seen
+
+    @property
+    def identity_jwks_url(self) -> str:
+        """JWKS endpoint used to verify Supabase access tokens."""
+
+        if self.supabase_jwks_url:
+            return self.supabase_jwks_url.rstrip("/")
+        if self.supabase_url:
+            return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        return ""
+
+    @property
+    def identity_issuer(self) -> str:
+        """Expected issuer for Supabase access tokens."""
+
+        if self.supabase_jwt_issuer:
+            return self.supabase_jwt_issuer.rstrip("/")
+        if self.supabase_url:
+            return f"{self.supabase_url.rstrip('/')}/auth/v1"
+        return ""
+
+    @property
+    def identity_configured(self) -> bool:
+        """True when access tokens can be verified end to end."""
+
+        return bool(self.supabase_jwt_secret or self.identity_jwks_url)
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
