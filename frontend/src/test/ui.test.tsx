@@ -31,7 +31,7 @@ describe('accessible screens', () => {
     wrap(<NotFound />)
     expect(screen.getByRole('link', { name: 'return home' })).toHaveAttribute('href', '/')
   })
-  it('does not render private content for signed-out visitors', () => {
+  it('does not render private content for signed-out visitors', async () => {
     wrap(
       <Routes>
         <Route
@@ -46,7 +46,8 @@ describe('accessible screens', () => {
       </Routes>,
     )
     expect(screen.queryByText('Private records')).not.toBeInTheDocument()
-    expect(screen.getByText('Sign in required')).toBeVisible()
+    expect(await screen.findByText('Sign in required')).toBeVisible()
+    expect(screen.queryByText('Private records')).not.toBeInTheDocument()
   })
   it('validates sign-in email without sending a request', async () => {
     wrap(<AuthPage mode="login" />)
