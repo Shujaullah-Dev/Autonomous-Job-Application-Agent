@@ -1,24 +1,31 @@
 import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowUpRight, FileText, CheckCircle2 } from 'lucide-react'
-import { useDemo } from '../app/store'
-import { editDraft, prepareHandoff, transitions, updateStatus, type Status } from '../lib/demo'
-import { Alert, Badge, EmptyState, Modal } from '../components/ui'
+import { useWorkspace } from '../app/workspace'
+import { transitions, type Status } from '../lib/demo'
+import { Alert, Badge, EmptyState, Modal, Skeleton } from '../components/ui'
 
 const statusLabel = (status: string) =>
   status === 'submitted' ? 'Submitted by you' : status[0].toUpperCase() + status.slice(1)
 export function Applications() {
-  const { state } = useDemo()
+  const { state, loading, live } = useWorkspace()
   const [params, setParams] = useSearchParams()
   const status = params.get('status') || 'all'
   const search = params.get('q') || ''
+  const jobOf = (jobId: number) =>
+    state.jobs.find((j) => j.id === jobId) ?? {
+      id: jobId,
+      title: 'Role unavailable',
+      company_name: '',
+    }
   const rows = state.applications.filter((a) => {
-    const job = state.jobs.find((j) => j.id === a.jobId)!
+    const job = jobOf(a.jobId)
     return (
       (status === 'all' || a.status === status) &&
       `${job.title} ${job.company_name}`.toLowerCase().includes(search.toLowerCase())
     )
   })
+  if (live && loading && !state.applications.length) return <Skeleton />
   return (
     <>
       <div className="page-heading">
@@ -79,7 +86,7 @@ export function Applications() {
             <span>Revision</span>
           </div>
           {rows.map((a) => {
-            const job = state.jobs.find((j) => j.id === a.jobId)!
+            const job = jobOf(a.jobId)
             return (
               <Link className="list-row" to={`/applications/${a.id}`} key={a.id}>
                 <span className="company-mark">{job.company_name[0]}</span>
@@ -107,7 +114,7 @@ export function Applications() {
 }
 export function ApplicationDetail() {
   const { applicationId } = useParams()
-  const { state, setState } = useDemo()
+  const { state, demo, live, loading, saveDraft, changeStatus, prepareHandoff } = useWorkspace()
   const application = state.applications.find((a) => a.id === applicationId)
   const [letter, setLetter] = useState(application?.letter || '')
   const [revision, setRevision] = useState(application?.revision || 1)
@@ -116,56 +123,35 @@ export function ApplicationDetail() {
   const [action, setAction] = useState<Status | 'handoff' | null>(null)
   const [reviewed, setReviewed] = useState(false)
   const [manual, setManual] = useState(false)
+  if (live && loading && !application) return <Skeleton />
   if (!application)
     return (
       <EmptyState title="Application unavailable">
-        Demo changes are cleared on reload. <Link to="/applications">Back to applications</Link>
+        This record could not be loaded. <Link to="/applications">Back to applications</Link>
       </EmptyState>
     )
-  const job = state.jobs.find((j) => j.id === application.jobId)!
+  const job = state.jobs.find((j) => j.id === application.jobId)
   const dirty = letter !== application.letter
   const canEdit = ['draft', 'ready'].includes(application.status)
-  function save() {
+  async function save() {
     try {
-      const next = editDraft(application!, letter, revision)
-      setState((s) => ({
-        ...s,
-        applications: s.applications.map((a) => (a.id === next.id ? next : a)),
-      }))
-      setRevision(next.revision)
-      setMessage(`Revision ${next.revision} saved.`)
+      await saveDraft(application!.id, letter, revision)
+      setRevision(revision + 1)
+      setMessage(`Revision ${revision + 1} saved.`)
       setError('')
     } catch (e) {
       setError((e as Error).message)
     }
   }
-  function confirm() {
+  async function confirm() {
     try {
-      const next =
-        action === 'handoff'
-          ? prepareHandoff(application!, revision, reviewed, manual)
-          : updateStatus(application!, action as Status, reviewed, manual)
-      setState((s) => ({
-        ...s,
-        applications: s.applications.map((a) => (a.id === next.id ? next : a)),
-        followUps: ['offered', 'rejected', 'withdrawn'].includes(next.status)
-          ? s.followUps.map((f) =>
-              f.applicationId === next.id && f.state === 'pending'
-                ? { ...f, state: 'dismissed' }
-                : f,
-            )
-          : s.followUps,
-        interviews: ['offered', 'rejected', 'withdrawn'].includes(next.status)
-          ? s.interviews.map((i) =>
-              i.applicationId === next.id && i.status === 'scheduled'
-                ? { ...i, status: 'cancelled', version: i.version + 1 }
-                : i,
-            )
-          : s.interviews,
-      }))
+      if (action === 'handoff') await prepareHandoff(application!.id, revision)
+      else await changeStatus(application!.id, action as Status, reviewed, manual)
       setMessage(
         action === 'handoff'
-          ? 'Prepared — open the employer site and apply yourself. This fictional role has no employer destination.'
+          ? demo
+            ? 'Prepared — open the employer site and apply yourself. This fictional role has no employer destination.'
+            : 'Handoff prepared. Open the employer listing and apply yourself.'
           : action === 'submitted'
             ? 'Recorded your submission report. No employer confirmation was received.'
             : `Status changed to ${action}.`,
@@ -191,9 +177,9 @@ export function ApplicationDetail() {
       </Link>
       <div className="page-heading">
         <div>
-          <p>{job.company_name}</p>
-          <h1>{job.title}</h1>
-          <p>Sample materials · Review every claim before use</p>
+          <p>{job?.company_name || 'Company unavailable'}</p>
+          <h1>{job?.title || 'Role unavailable'}</h1>
+          <p>Review every claim before use</p>
         </div>
         <Badge status={application.status}>{statusLabel(application.status)}</Badge>
       </div>
@@ -260,8 +246,7 @@ export function ApplicationDetail() {
               ))}
             </div>
             <p className="muted">
-              Saved when this demo draft was created. Later profile edits do not change this
-              snapshot.
+              Saved when this draft was created. Later profile edits do not change this snapshot.
             </p>
           </section>
           <section className="panel form-section">
@@ -321,7 +306,7 @@ export function ApplicationDetail() {
         description={
           action === 'submitted'
             ? 'Only confirm after completing the application on the employer site. This records your report.'
-            : 'This action updates your demo tracking record. Nothing is sent to an employer.'
+            : 'This action updates your tracking record. Nothing is sent to an employer.'
         }
       >
         {(action === 'handoff' || action === 'ready') && (

@@ -1,6 +1,6 @@
 import { Component, type ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { AlertCircle, X, Inbox } from 'lucide-react'
+import { AlertCircle, CheckCircle2, X, Inbox } from 'lucide-react'
 
 export function Alert({
   children,
@@ -9,9 +9,10 @@ export function Alert({
   children: ReactNode
   kind?: 'info' | 'error' | 'success'
 }) {
+  const Icon = kind === 'success' ? CheckCircle2 : AlertCircle
   return (
     <div className={`alert ${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
-      <AlertCircle size={18} />
+      <Icon size={18} />
       <div>{children}</div>
     </div>
   )

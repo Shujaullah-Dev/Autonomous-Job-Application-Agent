@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useDemo } from '../app/store'
+import { useWorkspace } from '../app/workspace'
 import { useAuth } from '../features/auth/AuthProvider'
 import { Alert, Modal } from '../components/ui'
 
 export function Settings() {
-  const { reset } = useDemo()
+  const { reset } = useWorkspace()
   const { demo, session, signOut } = useAuth()
   const [confirm, setConfirm] = useState(false)
   const [message, setMessage] = useState('')
@@ -36,8 +36,9 @@ export function Settings() {
       <section className="panel form-section">
         <h2>Your data</h2>
         <p>
-          Demo profile edits and application records live in memory and are cleared on reload or
-          sign-out. Resume files are not uploaded in this version.
+          {demo
+            ? 'Demo profile edits and application records live in memory and are cleared on reload or sign-out. Resume files are not uploaded in this version.'
+            : 'Your profile, applications, follow-ups, and interviews are stored in the account database. Resume previews send the file for extraction without storing it.'}
         </p>
         {demo && (
           <button className="secondary" onClick={() => setConfirm(true)}>

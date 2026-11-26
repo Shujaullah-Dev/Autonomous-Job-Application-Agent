@@ -27,6 +27,8 @@ export type Workflow = {
   jobIds: number[]
   approvedIds: number[]
   status: 'pending_review' | 'approved' | 'rejected' | 'no_matches'
+  scores?: Record<number, number>
+  summaries?: Record<number, string>
 }
 export type FollowUp = {
   id: string
@@ -47,7 +49,14 @@ export type Interview = {
   version: number
   reminders: number[]
 }
-export type Notification = { id: string; title: string; at: string; read: boolean }
+export type Notification = {
+  id: string
+  title: string
+  at: string
+  read: boolean
+  /** Server identifier for reminders loaded from the API. */
+  apiId?: string
+}
 export type DemoState = {
   profile: Profile
   jobs: Job[]

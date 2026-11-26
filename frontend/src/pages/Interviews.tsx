@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Plus, CalendarDays, Download } from 'lucide-react'
-import { useDemo } from '../app/store'
+import { useWorkspace } from '../app/workspace'
 import { interviewConflict, type Interview } from '../lib/demo'
 import { downloadCalendar, localInput } from '../lib/calendar'
 import { safeUrl } from '../lib/api'
-import { Alert, Badge, EmptyState, Modal } from '../components/ui'
+import { Alert, Badge, EmptyState, Modal, Skeleton } from '../components/ui'
 
 const blank = {
   applicationId: '',
@@ -16,7 +16,7 @@ const blank = {
   location: '',
 }
 export function Interviews() {
-  const { state, setState } = useDemo()
+  const { state, demo, loading, live, saveInterview, interviewAction } = useWorkspace()
   const { interviewId } = useParams()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Interview | null>(null)
@@ -24,6 +24,7 @@ export function Interviews() {
   const [reminders, setReminders] = useState<number[]>([1440, 60])
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [failed, setFailed] = useState(false)
   const [action, setAction] = useState<{
     interview: Interview
     status: 'cancelled' | 'completed'
@@ -41,7 +42,7 @@ export function Interviews() {
     setError('')
     setOpen(true)
   }
-  function save() {
+  async function save() {
     const start = new Date(form.start),
       end = new Date(form.end)
     if (
@@ -54,35 +55,36 @@ export function Interviews() {
       setError('Choose an application, a title, and an end time after the start.')
       return
     }
-    if (interviewConflict(state.interviews, start.toISOString(), end.toISOString(), editing?.id)) {
+    if (
+      demo &&
+      interviewConflict(state.interviews, start.toISOString(), end.toISOString(), editing?.id)
+    ) {
       setError('This overlaps another scheduled interview. Choose another time.')
       return
     }
-    if (editing && state.interviews.find((i) => i.id === editing.id)?.version !== editing.version) {
-      setError('This interview changed. Close this dialog and reload its details.')
-      return
+    try {
+      await saveInterview({
+        id: editing?.id,
+        applicationId: form.applicationId,
+        title: form.title.trim(),
+        start,
+        end,
+        mode: form.mode,
+        location: form.location,
+        reminders,
+        version: editing?.version,
+      })
+      setFailed(false)
+      setMessage(
+        editing ? 'Interview rescheduled.' : 'Interview scheduled. Reminders are in-app only.',
+      )
+      setError('')
+      setOpen(false)
+    } catch (err) {
+      setError((err as Error).message)
     }
-    const next: Interview = {
-      ...form,
-      title: form.title.trim(),
-      id: editing?.id || crypto.randomUUID(),
-      start: start.toISOString(),
-      end: end.toISOString(),
-      status: 'scheduled',
-      version: (editing?.version || 0) + 1,
-      reminders,
-    }
-    setState((s) => ({
-      ...s,
-      interviews: editing
-        ? s.interviews.map((i) => (i.id === editing.id ? next : i))
-        : [...s.interviews, next],
-    }))
-    setMessage(
-      editing ? 'Interview rescheduled.' : 'Interview scheduled. Reminders are in-app only.',
-    )
-    setOpen(false)
   }
+  if (live && loading && !state.interviews.length) return <Skeleton />
   return (
     <>
       <div className="page-heading">
@@ -95,7 +97,7 @@ export function Interviews() {
           Schedule interview
         </button>
       </div>
-      {message && <Alert kind="success">{message}</Alert>}
+      {message && <Alert kind={failed ? 'error' : 'success'}>{message}</Alert>}
       <div className="tabs">
         <button
           aria-pressed={view === 'list'}
@@ -113,8 +115,8 @@ export function Interviews() {
         </button>
       </div>
       <Alert>
-        Reminders appear in the app. Live reminders become available only after the server processor
-        runs. The demo has a manual due-reminder check in Notifications.
+        Reminders appear in the app only. Due reminders become available after the server processor
+        runs; use the check on the Notifications screen.
       </Alert>
       {rows.length ? (
         <div className={view === 'calendar' ? 'agenda' : ''}>
@@ -204,7 +206,7 @@ export function Interviews() {
         open={open}
         onOpenChange={setOpen}
         title={editing ? 'Reschedule interview' : 'Schedule interview'}
-        description={`Enter times in ${timezone}. They are stored as UTC for this demo visit.`}
+        description={`Enter times in ${timezone}. They are stored as UTC.`}
       >
         {error && <Alert kind="error">{error}</Alert>}
         {eligible.length ? (
@@ -225,7 +227,7 @@ export function Interviews() {
                 <option value="">Choose application</option>
                 {eligible.map((a) => (
                   <option value={a.id} key={a.id}>
-                    {state.jobs.find((j) => j.id === a.jobId)!.title}
+                    {state.jobs.find((j) => j.id === a.jobId)?.title || 'Application'}
                   </option>
                 ))}
               </select>
@@ -315,25 +317,20 @@ export function Interviews() {
         title={
           action?.status === 'cancelled' ? 'Cancel this interview?' : 'Mark interview complete?'
         }
-        description="Scheduled reminders for this interview will stop appearing in the demo."
+        description="Scheduled reminders for this interview will stop appearing."
       >
         <div className="actions">
           <button
-            onClick={() => {
+            onClick={async () => {
               if (!action) return
-              const current = state.interviews.find((i) => i.id === action.interview.id)
-              if (current?.version !== action.interview.version) {
-                setMessage('This interview changed. Reload its details.')
-                setAction(null)
-                return
+              try {
+                await interviewAction(action.interview.id, action.status, action.interview.version)
+                setFailed(false)
+                setMessage(`Interview ${action.status}.`)
+              } catch (err) {
+                setFailed(true)
+                setMessage((err as Error).message)
               }
-              setState((s) => ({
-                ...s,
-                interviews: s.interviews.map((i) =>
-                  i.id === current.id ? { ...i, status: action.status, version: i.version + 1 } : i,
-                ),
-              }))
-              setMessage(`Interview ${action.status}.`)
               setAction(null)
             }}
           >

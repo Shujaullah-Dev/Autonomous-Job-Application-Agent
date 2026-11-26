@@ -18,10 +18,9 @@ import {
   Clock3,
 } from 'lucide-react'
 import { useAuth } from '../../features/auth/AuthProvider'
-import { useDemo } from '../../app/store'
+import { useWorkspace } from '../../app/workspace'
 import { Alert } from '../ui'
 import { useMedia } from '../../lib/useMedia'
-import { useClock } from '../../lib/useClock'
 
 const navigation = [
   ['/dashboard', 'Overview', LayoutDashboard],
@@ -35,21 +34,19 @@ const navigation = [
 export function AppShell() {
   const [menu, setMenu] = useState(false)
   const desktop = useMedia('(min-width: 641px)')
-  const now = useClock()
   const { demo, signOut } = useAuth()
-  const { state, reset } = useDemo()
+  const { state, reset, hasProfile, loading, error, refresh } = useWorkspace()
   const location = useLocation()
   const navigate = useNavigate()
-  const unread = state.notifications.filter(
-    (n) =>
-      !n.read &&
-      state.interviews.some(
-        (i) =>
-          i.status === 'scheduled' &&
-          new Date(i.start).getTime() >= now &&
-          i.reminders.some((m) => n.id === `${i.id}:${i.version}:${m}`),
-      ),
-  ).length
+  const unread = state.notifications.filter((n) => !n.read).length
+  const initials = state.profile.full_name
+    ? state.profile.full_name
+        .split(' ')
+        .map((part) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : 'JA'
   const title =
     [
       ...navigation,
@@ -90,7 +87,7 @@ export function AppShell() {
           jobagent<span className="brand-dot">.</span>
         </Link>
         <div className="workspace-label">
-          <span className="avatar small">{demo ? 'AM' : 'JA'}</span>
+          <span className="avatar small">{demo ? 'AM' : initials}</span>
           <span>
             Your workspace<small>{demo ? 'Demo account' : 'Signed in'}</small>
           </span>
@@ -155,7 +152,7 @@ export function AppShell() {
               {unread > 0 && <i />}
             </Link>
             <Link className="avatar" aria-label="Open profile" to="/profile">
-              {demo ? 'AM' : 'JA'}
+              {demo ? 'AM' : initials}
             </Link>
           </div>
         </header>
@@ -165,12 +162,20 @@ export function AppShell() {
               <span>Demo mode</span> Fictional jobs and sample data. Changes last until you reload.
               No applications are sent.
             </div>
-          ) : (
-            <Alert>
-              Private profile and application access is unavailable while server-side account
-              protection is being completed. You can browse public job listings.
+          ) : error ? (
+            <Alert kind="error">
+              {error}{' '}
+              <button className="text-button" onClick={() => void refresh()}>
+                Try again
+              </button>
             </Alert>
-          )}
+          ) : !hasProfile && !loading ? (
+            <Alert>
+              Your workspace is connected, but no profile is saved yet.{' '}
+              <Link to="/onboarding">Complete your profile</Link> to unlock shortlists,
+              applications, follow-ups, and interviews.
+            </Alert>
+          ) : null}
           <Outlet />
         </main>
         <footer className="app-footer">

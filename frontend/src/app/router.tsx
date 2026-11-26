@@ -1,9 +1,9 @@
-import { lazy, Suspense, type ReactNode } from 'react'
-import { createBrowserRouter, Link, Outlet } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
+import { createBrowserRouter, Outlet } from 'react-router-dom'
 import { ProtectedRoute, useAuth } from '../features/auth/AuthProvider'
 import { DemoProvider } from './store'
+import { WorkspaceProvider } from './workspace'
 import { AppShell } from '../components/layout/AppShell'
-import { Alert } from '../components/ui'
 import { NotFound } from '../pages/NotFound'
 import { Landing } from '../pages/Landing'
 import { AuthPage } from '../pages/Auth'
@@ -28,51 +28,27 @@ const Notifications = lazy(() =>
 )
 const Settings = lazy(() => import('../pages/Settings').then((m) => ({ default: m.Settings })))
 
-function DemoOnly({ children }: { children: ReactNode }) {
-  const { demo } = useAuth()
-  return demo ? (
-    children
-  ) : (
-    <div className="blocked-page">
-      <h1>Private workspace access is pending.</h1>
-      <Alert>
-        Sign-in is available, but the API does not yet verify account ownership for private records.
-        These screens stay closed until that protection is ready.
-      </Alert>
-      <p>You can browse public jobs or sign out and explore the sample workspace.</p>
-      <Link className="button" to="/jobs">
-        Browse jobs
-      </Link>
-    </div>
-  )
-}
-function ApiCandidatePage({ children }: { children: ReactNode }) {
-  const { session, demo } = useAuth()
-  return session && !demo && session.user.email_confirmed_at ? (
-    children
-  ) : (
-    <DemoOnly>{children}</DemoOnly>
-  )
-}
 function Workspace() {
   const { demo, session } = useAuth()
   return (
     <ProtectedRoute>
       <DemoProvider key={demo ? 'demo' : session?.user.id || 'guest'}>
-        <Suspense
-          fallback={
-            <div className="loading" role="status">
-              Loading workspace…
-            </div>
-          }
-        >
-          <AppShell />
-        </Suspense>
+        <WorkspaceProvider>
+          <Suspense
+            fallback={
+              <div className="loading" role="status">
+                Loading workspace…
+              </div>
+            }
+          >
+            <AppShell />
+          </Suspense>
+        </WorkspaceProvider>
       </DemoProvider>
     </ProtectedRoute>
   )
 }
-const privatePage = (page: ReactNode) => <DemoOnly>{page}</DemoOnly>
+
 export const routes = [
   { path: '/', element: <Landing /> },
   { path: '/login', element: <AuthPage mode="login" /> },
@@ -82,47 +58,26 @@ export const routes = [
   {
     element: <Workspace />,
     children: [
-      { path: '/dashboard', element: privatePage(<Dashboard />) },
-      {
-        path: '/onboarding',
-        element: (
-          <ApiCandidatePage>
-            <Profile onboarding />
-          </ApiCandidatePage>
-        ),
-      },
-      {
-        path: '/profile',
-        element: (
-          <ApiCandidatePage>
-            <Profile />
-          </ApiCandidatePage>
-        ),
-      },
-      {
-        path: '/resume',
-        element: (
-          <ApiCandidatePage>
-            <Resume />
-          </ApiCandidatePage>
-        ),
-      },
+      { path: '/dashboard', element: <Dashboard /> },
+      { path: '/onboarding', element: <Profile onboarding /> },
+      { path: '/profile', element: <Profile /> },
+      { path: '/resume', element: <Resume /> },
       { path: '/jobs', element: <Jobs /> },
       { path: '/jobs/:jobId', element: <JobDetail /> },
       {
         path: '/workflows',
-        element: privatePage(<Outlet />),
+        element: <Outlet />,
         children: [
           { index: true, element: <Workflows /> },
           { path: ':workflowId', element: <Workflows /> },
         ],
       },
-      { path: '/applications', element: privatePage(<Applications />) },
-      { path: '/applications/:applicationId', element: privatePage(<ApplicationDetail />) },
-      { path: '/follow-ups', element: privatePage(<FollowUps />) },
-      { path: '/interviews', element: privatePage(<Interviews />) },
-      { path: '/interviews/:interviewId', element: privatePage(<Interviews />) },
-      { path: '/notifications', element: privatePage(<Notifications />) },
+      { path: '/applications', element: <Applications /> },
+      { path: '/applications/:applicationId', element: <ApplicationDetail /> },
+      { path: '/follow-ups', element: <FollowUps /> },
+      { path: '/interviews', element: <Interviews /> },
+      { path: '/interviews/:interviewId', element: <Interviews /> },
+      { path: '/notifications', element: <Notifications /> },
       { path: '/settings', element: <Settings /> },
     ],
   },

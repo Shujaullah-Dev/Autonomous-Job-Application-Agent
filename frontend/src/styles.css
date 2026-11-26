@@ -68,6 +68,50 @@ button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* A saving button stays legible and shows a spinner instead of fading out. */
+button.busy {
+  opacity: 1;
+  cursor: progress;
+}
+.spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.save-progress {
+  position: relative;
+  overflow: hidden;
+  height: 4px;
+  border-radius: 999px;
+  background: #e2eae4;
+  margin: 2px 0 10px;
+}
+.save-progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  border-radius: inherit;
+  background: var(--forest);
+  animation: save-progress 1.1s ease-in-out infinite;
+}
+@keyframes save-progress {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(310%);
+  }
+}
 .secondary {
   color: var(--forest);
   background: white;
@@ -865,6 +909,17 @@ details article {
   background: #e9f4e8;
   border-color: #cce1c7;
   color: #3b6238;
+  animation: saved-pop 0.4s ease-out;
+}
+@keyframes saved-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .empty {
   text-align: center;
@@ -961,6 +1016,32 @@ details article {
   min-height: 28px;
   min-width: 25px;
   padding: 5px;
+}
+.refresh-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 22px;
+  margin-bottom: 20px;
+}
+.refresh-panel p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+  margin-top: 6px;
+  max-width: 72ch;
+}
+.refresh-panel .alert {
+  margin: 12px 0 0;
+}
+.refresh-panel button {
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .refresh-panel {
+    flex-direction: column;
+  }
 }
 .form-actions {
   display: flex;

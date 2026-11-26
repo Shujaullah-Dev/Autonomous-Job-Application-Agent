@@ -7,6 +7,7 @@ import { EmptyState } from '../components/ui'
 import { AuthProvider, ProtectedRoute } from '../features/auth/AuthProvider'
 import { AuthPage } from '../pages/Auth'
 import { DemoProvider } from '../app/store'
+import { WorkspaceProvider } from '../app/workspace'
 import { Profile } from '../pages/Profile'
 import { NotFound } from '../pages/NotFound'
 
@@ -15,7 +16,9 @@ function wrap(children: React.ReactNode) {
     <MemoryRouter>
       <QueryClientProvider client={new QueryClient()}>
         <AuthProvider>
-          <DemoProvider>{children}</DemoProvider>
+          <DemoProvider>
+            <WorkspaceProvider>{children}</WorkspaceProvider>
+          </DemoProvider>
         </AuthProvider>
       </QueryClientProvider>
     </MemoryRouter>,

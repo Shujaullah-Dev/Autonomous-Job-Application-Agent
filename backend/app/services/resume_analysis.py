@@ -18,6 +18,31 @@ from app.services.resume_skills import extract_skills
 
 logger = logging.getLogger(__name__)
 
+# Human-readable explanations for the reasons the AI parser can be
+# unavailable. The raw reason is kept alongside it for support/debugging.
+GROQ_REASON_LABELS = {
+    "missing_api_key": "no API key is configured",
+    "input_limit_exceeded": "the resume text is too long for the AI parser",
+    "timeout": "the AI service did not respond in time",
+    "network_error": "the network request to the AI service failed",
+    "rate_limit": "the AI service is rate limited",
+    "authentication_error": "the AI service rejected the credentials",
+    "invalid_request": "the AI service rejected the request",
+    "provider_unavailable": "the AI service is temporarily unavailable",
+    "provider_error": "the AI service returned an error",
+    "invalid_model_response": (
+        "the AI service returned a response that could not be used"
+    ),
+    "response_truncated": (
+        "the AI response was cut off before it finished"
+    ),
+}
+
+
+def describe_groq_reason(reason: str) -> str:
+    label = GROQ_REASON_LABELS.get(reason, "the AI service is unavailable")
+    return f"{label} ({reason})"
+
 
 def parse_locally(text: str):
     contact = extract_contact(text)
@@ -80,9 +105,10 @@ def analyze_resume_text(
             ) = parse_locally(text)
 
             warnings.append(
-                f"Groq unavailable ({exc.reason}); "
-                "local parser used. "
-                "Results may be incomplete."
+                "AI parser unavailable: "
+                f"{describe_groq_reason(exc.reason)}. "
+                "Local extraction was used instead, so results "
+                "may be incomplete. Review them carefully."
             )
 
     else:
@@ -94,7 +120,7 @@ def analyze_resume_text(
         ) = parse_locally(text)
 
         warnings.append(
-            "Groq disabled; local parser used"
+            "AI parser is disabled; local extraction was used instead"
         )
 
     if not skills:

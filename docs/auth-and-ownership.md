@@ -106,10 +106,11 @@ development key and remain unavailable outside development.
 - `frontend/src/pages/Profile.tsx` resolves the account profile with
   `GET /api/v1/candidates/me` before using a stored identifier, and reuses that
   profile instead of creating a duplicate.
-- Shortlists, applications, follow-ups, interviews and notifications still run
-  on the demo state. The API now enforces ownership for those routes, so the
-  remaining work is adapting each screen to the generated API types, not
-  adding backend authorization.
+- Shortlists, applications, follow-ups, interviews, notifications, resume
+  preview/import and the profile editor now call those routes through
+  `frontend/src/lib/live.ts` and `frontend/src/app/workspace.tsx`. The sample
+  workspace stays available as an explicit opt-in and never writes to the API.
+  Release gates are tracked in [production-readiness.md](production-readiness.md).
 
 ## Verification
 
@@ -146,5 +147,5 @@ For a manual check with Swagger:
 - Row-level security is not enabled, because the browser never queries tables
   directly. Revisit if direct table access is introduced.
 - Rate limiting and abuse controls are not implemented.
-- The frontend private screens still use demo state for shortlists,
-  applications, follow-ups, interviews and notifications.
+- Two-account verification against the live Supabase project has not been run;
+  the ownership suite is exercised against the test database only.

@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     database_url: str
     dev_job_write_key: str
     job_source_timeout_seconds: float = 20.0
+
+    # Keep job listings fresh. The scheduler runs inside the API process, so
+    # the API must stay running for automatic refreshes to happen. A manual
+    # refresh from the app or POST /api/v1/jobs/refresh always works.
+    job_refresh_enabled: bool = True
+    job_refresh_interval_hours: float = 6.0
+    job_refresh_on_startup: bool = False
+    job_refresh_max_per_source: int = 60
+    job_refresh_min_interval_seconds: int = 600
     langchain_explanations_enabled: bool = False
     application_drafts_ai_enabled: bool = False
     
@@ -36,6 +45,9 @@ class Settings(BaseSettings):
     resume_ai_enabled: bool = False
     groq_timeout_seconds: float = 30.0
     groq_max_chars: int = 20000
+    # Reasoning models spend part of this budget on hidden reasoning before
+    # writing the JSON, so the cap must leave room for both.
+    groq_max_completion_tokens: int = 8000
 
     @property
     def cors_origins(self) -> list[str]:

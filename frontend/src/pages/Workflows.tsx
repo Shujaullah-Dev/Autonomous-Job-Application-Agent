@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Plus, Check, ArrowUpRight } from 'lucide-react'
-import { useDemo } from '../app/store'
-import { match, type Application } from '../lib/demo'
-import { Alert, Badge, EmptyState, Modal } from '../components/ui'
+import { useWorkspace } from '../app/workspace'
+import { match } from '../lib/demo'
+import { Alert, Badge, EmptyState, Modal, Skeleton } from '../components/ui'
 
 export function Workflows() {
-  const { state, setState } = useDemo()
+  const { state, demo, loading, startWorkflow, reviewWorkflow, createDraft } = useWorkspace()
   const navigate = useNavigate()
   const { workflowId } = useParams()
   const workflow = state.workflows.find((w) => w.id === workflowId)
@@ -14,72 +14,67 @@ export function Workflows() {
   const [confirm, setConfirm] = useState(false)
   const [mode, setMode] = useState('')
   const [message, setMessage] = useState('')
-  function start() {
-    const id = crypto.randomUUID()
-    const jobIds = state.jobs
-      .filter((j) => !mode || j.work_mode === mode)
-      .sort((a, b) => match(b, state.profile.skills).score - match(a, state.profile.skills).score)
-      .slice(0, 5)
-      .map((j) => j.id)
-    setState((s) => ({
-      ...s,
-      workflows: [
-        ...s.workflows,
-        { id, jobIds, approvedIds: [], status: jobIds.length ? 'pending_review' : 'no_matches' },
-      ],
-    }))
-    navigate(`/workflows/${id}`)
+  const [failed, setFailed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  async function start() {
+    setBusy(true)
+    setMessage('')
+    try {
+      const id = await startWorkflow(mode)
+      navigate(`/workflows/${id}`)
+    } catch (e) {
+      setFailed(true)
+      setMessage((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
-  function decide(approved: boolean) {
+  async function decide(approved: boolean) {
     if (!workflow || workflow.status !== 'pending_review' || (approved && !selected.length)) return
-    setState((s) => ({
-      ...s,
-      workflows: s.workflows.map((w) =>
-        w.id === workflow.id
-          ? {
-              ...w,
-              approvedIds: approved ? selected : [],
-              status: approved ? 'approved' : 'rejected',
-            }
-          : w,
-      ),
-    }))
-    setConfirm(false)
-    setMessage(
-      approved
-        ? 'Shortlist approved. You can now create drafts for the selected roles.'
-        : 'Shortlist rejected. No drafts were created.',
-    )
+    setBusy(true)
+    try {
+      await reviewWorkflow(workflow.id, approved ? selected : [])
+      setConfirm(false)
+      setFailed(false)
+      setMessage(
+        approved
+          ? 'Shortlist approved. You can now create drafts for the selected roles.'
+          : 'Shortlist rejected. No drafts were created.',
+      )
+    } catch (e) {
+      setFailed(true)
+      setMessage((e as Error).message)
+      setConfirm(false)
+    } finally {
+      setBusy(false)
+    }
   }
-  function createDraft(jobId: number) {
+  async function makeDraft(jobId: number) {
     if (!workflow?.approvedIds.includes(jobId) || state.applications.some((a) => a.jobId === jobId))
       return
-    const job = state.jobs.find((j) => j.id === jobId)!
-    const id = crypto.randomUUID()
-    const application: Application = {
-      id,
-      jobId,
-      status: 'draft',
-      revision: 1,
-      resumeSnapshot: structuredClone(state.profile),
-      revisions: [],
-      history: [
-        {
-          status: 'draft',
-          at: new Date().toISOString(),
-          note: 'Draft created from an explicitly approved demo shortlist.',
-        },
-      ],
-      letter: `Hello ${job.company_name} team,\n\nI would like to apply for the ${job.title} role. My experience includes ${state.profile.skills.filter((skill) => job.description.toLowerCase().includes(skill.toLowerCase())).join(', ') || 'the skills listed in my profile'}. I would welcome a conversation about the work and the experience your team needs.\n\n${state.profile.full_name}`,
+    setBusy(true)
+    setMessage('')
+    try {
+      const id = await createDraft(workflow.id, jobId)
+      navigate(`/applications/${id}`)
+    } catch (e) {
+      setFailed(true)
+      setMessage((e as Error).message)
+    } finally {
+      setBusy(false)
     }
-    setState((s) => ({ ...s, applications: [...s.applications, application] }))
-    navigate(`/applications/${id}`)
   }
+  if (loading && !workflow)
+    return (
+      <>
+        <Skeleton />
+      </>
+    )
   if (workflowId && !workflow)
     return (
       <EmptyState title="Shortlist unavailable">
-        Demo state is cleared on reload. <Link to="/workflows">Start a new shortlist</Link>. A live
-        workflow may also be lost when the API restarts until durable checkpoints are available.
+        This shortlist could not be loaded. <Link to="/workflows">Start a new shortlist</Link>. If
+        the API restarted, saved shortlists reload from the workflow store.
       </EmptyState>
     )
   return (
@@ -93,12 +88,16 @@ export function Workflows() {
         </div>
         {workflow && <Badge status={workflow.status}>{workflow.status.replaceAll('_', ' ')}</Badge>}
       </div>
-      {message && <Alert kind="success">{message}</Alert>}
+      {message && <Alert kind={failed ? 'error' : 'success'}>{message}</Alert>}
       {!workflow ? (
         <>
           <section className="panel form-section">
-            <h2>Start a sample shortlist</h2>
-            <p>Uses the local example jobs and demo keyword score. No AI service is called.</p>
+            <h2>{demo ? 'Start a sample shortlist' : 'Start a shortlist'}</h2>
+            <p>
+              {demo
+                ? 'Uses the local example jobs and demo keyword score. No AI service is called.'
+                : 'Uses active roles from the job index and your verified profile. Nothing is sent to an employer.'}
+            </p>
             <div className="inline-form">
               <label>
                 Preferred work mode
@@ -109,9 +108,9 @@ export function Workflows() {
                   <option value="onsite">Onsite</option>
                 </select>
               </label>
-              <button onClick={start}>
+              <button disabled={busy} onClick={start}>
                 <Plus size={17} />
-                Create shortlist
+                {busy ? 'Building shortlist…' : 'Create shortlist'}
               </button>
             </div>
           </section>
@@ -122,7 +121,7 @@ export function Workflows() {
                 <Link className="list-row" key={w.id} to={`/workflows/${w.id}`}>
                   <div>
                     <strong>{w.jobIds.length} suggested roles</strong>
-                    <small>Demo shortlist {w.id.slice(0, 8)}</small>
+                    <small>Shortlist {w.id.slice(0, 8)}</small>
                   </div>
                   <Badge>{w.status.replaceAll('_', ' ')}</Badge>
                   <ArrowUpRight size={17} />
@@ -135,6 +134,12 @@ export function Workflows() {
             </EmptyState>
           )}
         </>
+      ) : workflow.jobIds.length === 0 ? (
+        <EmptyState title="No roles cleared the relevance bar">
+          None of the active roles mention the skills on your profile yet.{' '}
+          <Link to="/jobs">Browse the job index</Link> or{' '}
+          <Link to="/workflows">start another shortlist</Link> with a different work mode.
+        </EmptyState>
       ) : (
         <>
           <div className="panel table-panel">
@@ -164,19 +169,22 @@ export function Workflows() {
                       {job.company_name} · {job.work_mode || 'Work mode unknown'}
                     </small>
                     <small>
-                      {match(job, state.profile.skills).matched.join(', ') ||
-                        'No profile skills found in sample description'}{' '}
+                      {workflow.summaries?.[id] ||
+                        match(job, state.profile.skills).matched.join(', ') ||
+                        'No profile skills found in the listing'}{' '}
                       · Eligibility unverified
                     </small>
                   </div>
-                  <Badge>{match(job, state.profile.skills).score}% demo fit</Badge>
+                  <Badge>
+                    {workflow.scores?.[id] ?? match(job, state.profile.skills).score}% fit
+                  </Badge>
                   {workflow.approvedIds.includes(id) &&
                     (existing ? (
                       <Link className="button secondary" to={`/applications/${existing.id}`}>
                         Open draft
                       </Link>
                     ) : (
-                      <button className="secondary" onClick={() => createDraft(id)}>
+                      <button className="secondary" disabled={busy} onClick={() => makeDraft(id)}>
                         Create draft
                       </button>
                     ))}
@@ -186,10 +194,10 @@ export function Workflows() {
           </div>
           {workflow.status === 'pending_review' && (
             <div className="form-actions">
-              <button className="secondary" onClick={() => decide(false)}>
+              <button className="secondary" disabled={busy} onClick={() => decide(false)}>
                 Reject shortlist
               </button>
-              <button disabled={!selected.length} onClick={() => setConfirm(true)}>
+              <button disabled={!selected.length || busy} onClick={() => setConfirm(true)}>
                 <Check size={17} />
                 Approve {selected.length} selected
               </button>

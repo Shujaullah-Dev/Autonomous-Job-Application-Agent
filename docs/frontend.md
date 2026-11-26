@@ -26,8 +26,10 @@ The workspace has a dark teal navigation rail, a light gray-green content area, 
 
 | Location | Responsibility |
 | --- | --- |
-| `frontend/src/app/router.tsx` | Public routes, protected workspace, demo-only private feature gate |
+| `frontend/src/app/router.tsx` | Public routes, protected workspace |
+| `frontend/src/app/workspace.tsx` | API-backed workspace data, actions, and demo fallback |
 | `frontend/src/app/store.tsx` | In-memory demo state and reset |
+| `frontend/src/lib/live.ts` | Live API loader, mapping, and mutations |
 | `frontend/src/features/auth/AuthProvider.tsx` | Optional Supabase session, logout, expiry, query-cache clearing |
 | `frontend/src/components/layout/AppShell.tsx` | Sidebar, mobile navigation, topbar, demo disclosure |
 | `frontend/src/components/ui/index.tsx` | Alerts, empty state, loading skeleton, badges, error boundary, accessible modal |
@@ -51,7 +53,7 @@ All workspace routes require a verified Supabase session or an explicitly chosen
 | `/signup`, `/login` | Validated optional Supabase account forms with pending and failure messages |
 | `/forgot-password`, `/auth/callback` | Recovery request, callback session feedback, password update |
 | `/onboarding` | Profile setup followed by resume review |
-| `/dashboard` | Sample role, draft, reported-submission, and interview counts; next task; example matches |
+| `/dashboard` | Account role, draft, reported-submission, and interview counts; next task; keyword matches |
 | `/profile` | Name, email, location, years, summary, unique skills, editable education and work history |
 | `/resume` | File selection/drop validation, fixed-sample preview, editable sample skills, reviewed deduplicated import |
 | `/jobs` | URL-backed keyword/company/location/work-mode/salary/currency filters, pagination, page-local title sorting |
@@ -91,9 +93,9 @@ npm run typecheck
 
 The exporter sets an in-memory SQLite URL, disables AI use, prevents Python bytecode writes, imports the app, and calls `app.openapi()`. It does not query the database or call an API. It does not modify backend files. The schema includes development operations for contract completeness; those operations are not exposed in the UI.
 
-### Remaining private integration
+### Private integration
 
-Workflow, application, handoff, follow-up, interview, and notification routers now accept a verified access token and enforce candidate ownership, so they are no longer blocked by the development gate. The remaining gap is the browser client: those screens still run on demo state and have no typed query layer. Adapting each screen to the generated API types is the next frontend task; preserve server revision/version numbers, resume snapshots, preflight checks, and handoff results when doing so.
+Workflow, application, handoff, follow-up, interview, and notification routers accept a verified access token and enforce candidate ownership. The browser client now uses them through `frontend/src/lib/live.ts`: shortlist start/review, tracked applications, draft revisions, status changes, manual handoff, follow-ups, interviews, reminders, resume preview/import, and profile synchronization. Server revision and version numbers are preserved, and a stale revision or version surfaces the API's conflict message. The demo remains an isolated opt-in. Release gates are listed in [production-readiness.md](production-readiness.md).
 
 The API sends an explicit CORS allowlist (`FRONTEND_URL` plus the localhost/127.0.0.1 ports 3000 and 5173) and permits the `Authorization` header, so browser requests from the Vite dev server reach the backend. Workflow state is durable when `LANGGRAPH_CHECKPOINT_URL` is configured with a PostgreSQL database; otherwise restarting the API can still lose a pending shortlist review. Notification visibility still depends on the worker, and the migration chain still needs repair. The current frontend exposes the real API calls it can make, reports errors for unavailable operations, and keeps the demo as an optional isolated walkthrough. It does not claim that the remaining live application flow is complete.
 

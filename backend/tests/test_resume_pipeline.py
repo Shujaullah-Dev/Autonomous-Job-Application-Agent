@@ -186,3 +186,61 @@ def test_real_http_429_handled(monkeypatch):
 
     assert exc_info.value.reason == "rate_limit"
     assert exc_info.value.status_code == 429
+
+
+def test_truncated_ai_response_is_reported(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.resume_groq.settings.groq_api_key",
+        "test-key",
+    )
+
+    def fake_post(*args, **kwargs):
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"content": '{"skills": ["Py'},
+                    }
+                ]
+            },
+            request=httpx.Request(
+                "POST",
+                "https://api.groq.com/openai/v1/chat/completions",
+            ),
+        )
+
+    monkeypatch.setattr(
+        "app.services.resume_groq.httpx.post",
+        fake_post,
+    )
+
+    with pytest.raises(GroqUnavailable) as exc_info:
+        extract_groq(SAMPLE)
+
+    assert exc_info.value.reason == "response_truncated"
+
+
+def test_groq_uses_full_token_budget(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.resume_groq.settings.groq_api_key",
+        "test-key",
+    )
+
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured.update(kwargs["json"])
+        raise httpx.ConnectError("stop before the network")
+
+    monkeypatch.setattr(
+        "app.services.resume_groq.httpx.post",
+        fake_post,
+    )
+
+    with pytest.raises(GroqUnavailable):
+        extract_groq(SAMPLE)
+
+    # Reasoning models need a budget large enough for reasoning plus JSON.
+    assert captured["max_completion_tokens"] >= 6000

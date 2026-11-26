@@ -123,11 +123,21 @@ def identify_provider(source: str | None) -> str:
 
     value = (source or "").casefold()
 
-    if value.startswith("greenhouse:"):
-        return "greenhouse"
+    provider = value.split(":", 1)[0]
 
-    if value.startswith("lever:"):
-        return "lever"
+    if provider in {
+        "greenhouse",
+        "lever",
+        "ashby",
+        "workable",
+        "smartrecruiters",
+        "remotive",
+        "arbeitnow",
+        "jobicy",
+        "remoteok",
+        "himalayas",
+    }:
+        return provider
 
     return "external"
 

@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from app.schemas.job import JobCreate
 from app.services.job_sources.base import (
+    JobSourceError,
     SourceFetchResult,
 )
 
@@ -24,17 +25,6 @@ BOARD_TOKEN_PATTERN = re.compile(
 )
 
 MAX_BOARD_JOBS = 2000
-
-
-class JobSourceError(RuntimeError):
-    def __init__(
-        self,
-        reason: str,
-        status_code: int | None = None,
-    ):
-        self.reason = reason
-        self.status_code = status_code
-        super().__init__(reason)
 
 
 @dataclass(frozen=True)

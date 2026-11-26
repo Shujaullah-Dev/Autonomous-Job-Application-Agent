@@ -8,14 +8,14 @@ AI Job Agent pairs a FastAPI backend with a React frontend. The backend maintain
 - Candidate skill, work experience, and education management.
 - PDF and DOCX resume preview, with a local parser and optional Groq-powered extraction.
 - A separate, explicitly approved resume-import endpoint that adds reviewed details and skips duplicates.
-- Multi-source job discovery and ingestion from Greenhouse Job Board and Lever Postings APIs, with dry-run and apply modes.
+- Multi-source job discovery and ingestion from Greenhouse, Lever, Ashby, Workable and SmartRecruiters public APIs plus the Remotive, Arbeitnow, Jobicy, Remote OK and Himalayas feeds, with dry-run, apply and a curated `--defaults` set.
 - Job search and detail routes with keyword, company, location, work mode, employment type, and salary filters.
 - Workflow, application draft, manual handoff, follow-up, interview, and notification routes. They require a verified Supabase access token and candidate ownership; the development key remains available for local development.
 - A React frontend with onboarding, profile, resume review, job search, shortlists, applications, follow-ups, interviews, notifications, and settings screens, plus desktop and mobile browser tests.
 - An explicit CORS allowlist for the local frontend origins.
 - SQLAlchemy models and Alembic migrations for candidate profiles, skills, experience, education, and jobs. **The migration history needs repair before it can reliably provision a fresh database.**
 
-Security status: the API verifies Supabase access tokens and scopes every candidate-scoped route to the token subject (`backend/app/core/auth.py`, `candidate_profiles.owner_id`). Identity verification is active only when `SUPABASE_URL` or the JWKS settings are configured. The migration history still needs repair, workflow checkpoints are durable only with `LANGGRAPH_CHECKPOINT_URL`, and the browser screens for shortlists, applications, follow-ups, interviews and notifications still use demo state. Keep the API on loopback or a private network and use synthetic data until the remaining gates in [docs/roadmap.md](docs/roadmap.md) are closed.
+Security status: the API verifies Supabase access tokens and scopes every candidate-scoped route to the token subject (`backend/app/core/auth.py`, `candidate_profiles.owner_id`). Identity verification is active only when `SUPABASE_URL` or the JWKS settings are configured. The signed-in workspace now reads and writes those routes; the sample workspace remains an explicit opt-in. The migration history still needs repair and workflow checkpoints are durable only with `LANGGRAPH_CHECKPOINT_URL`. Keep the API on loopback or a private network and use synthetic data until the remaining gates in [docs/production-readiness.md](docs/production-readiness.md) are closed.
 
 ## Project layout
 
@@ -103,7 +103,12 @@ The backend reads only the repository-root `.env`. The frontend reads only `fron
 | `FRONTEND_URL` | `http://localhost:3000` | First CORS origin; must match the browser origin exactly |
 | `DEBUG` | `false` | FastAPI debug mode |
 | `API_HOST`, `API_PORT` | `127.0.0.1`, `8000` | Loaded settings; the Uvicorn command sets the actual bind |
-| `JOB_SOURCE_TIMEOUT_SECONDS` | `20` | Timeout for Greenhouse and Lever requests |
+| `JOB_SOURCE_TIMEOUT_SECONDS` | `20` | Timeout for provider requests |
+| `JOB_REFRESH_ENABLED` | `true` | Runs the timed job import inside the API process |
+| `JOB_REFRESH_INTERVAL_HOURS` | `6` | Hours between automatic imports |
+| `JOB_REFRESH_ON_STARTUP` | `false` | Import once when the API starts |
+| `JOB_REFRESH_MAX_PER_SOURCE` | `60` | Listings imported per source in one refresh |
+| `JOB_REFRESH_MIN_INTERVAL_SECONDS` | `600` | Cooldown before another manual refresh is accepted |
 | `RESUME_AI_ENABLED` | `false` | Sends extracted resume text to Groq when true |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Empty, `openai/gpt-oss-20b` | Groq credential and model |
 | `GROQ_TIMEOUT_SECONDS`, `GROQ_MAX_CHARS` | `30`, `20000` | Groq timeout and text limit |
@@ -168,19 +173,50 @@ Send selected records to the import endpoint as JSON with `"approved": true`. Th
 
 ## Multi-Source Job Discovery
 
-The job importer supports the Greenhouse Job Board API and Lever Postings API. Provider adapters normalize their listings into the shared job schema. Each imported listing retains its provider (`source`) and provider-specific identifier (`source_job_id`), along with its original `job_url` and normalized `canonical_url`.
+The job importer reads ten public providers:
+
+| Provider | Endpoint | Flag |
+| --- | --- | --- |
+| Greenhouse | Job Board API | `--greenhouse-board` |
+| Lever | Postings API | `--lever-site` + `--lever-company-name` |
+| Ashby | Job board API | `--ashby-board token` or `--ashby-board "token:Company Name"` |
+| Workable | Widget API | `--workable-site site` or `--workable-site "site:Company Name"` |
+| SmartRecruiters | Postings API | `--smartrecruiters-company id` |
+| Remotive | Remote job feed | `--feed remotive` |
+| Arbeitnow | Job board feed | `--feed arbeitnow` |
+| Jobicy | Remote job feed | `--feed jobicy` |
+| Remote OK | Remote job feed | `--feed remoteok` |
+| Himalayas | Remote job feed | `--feed himalayas` |
+
+Provider adapters normalize their listings into the shared job schema. Each imported listing retains its provider (`source`) and provider-specific identifier (`source_job_id`), along with its original `job_url` and normalized `canonical_url`.
 
 The ingestion pipeline canonicalizes URLs and checks existing jobs by provider identity and canonical URL. It also checks company/title/location fingerprints for likely cross-provider duplicates; possible duplicates are skipped and reported. Both providers use the same `jobs` table, which can be hosted on PostgreSQL or Supabase.
 
 The importer defaults to a dry run and does not commit database changes unless `--apply` is passed. From the `backend` directory, for example:
 
 ```powershell
-python -m app.scripts.ingest_jobs --greenhouse-board example-board
-python -m app.scripts.ingest_jobs --lever-site example-site --lever-company-name "Example Company"
-python -m app.scripts.ingest_jobs --greenhouse-board example-board --lever-site example-site --lever-company-name "Example Company" --apply
+python -m app.scripts.ingest_jobs --defaults
+python -m app.scripts.ingest_jobs --defaults --apply
+python -m app.scripts.ingest_jobs --ashby-board "openai:OpenAI" --workable-site "huggingface:Hugging Face" --apply
+python -m app.scripts.ingest_jobs --feed remotive --feed arbeitnow --apply
 ```
 
-Repeat `--greenhouse-board` or `--lever-site` to import from multiple accounts. Each `--lever-site` must have a corresponding `--lever-company-name` in the same order. The command uses `DATABASE_URL` from the repository-root `.env`. Review the dry-run summary before applying imports.
+`--defaults` imports from the curated, verified catalog in `backend/app/services/job_sources/catalog.py`: 18 Greenhouse boards, 2 Lever sites, 14 Ashby boards, one Workable account, one SmartRecruiters company and all five public feeds. Every flag may be repeated. Each source is fetched and imported on its own, so an unreachable board is reported under "Sources that could not be imported" instead of discarding the listings already collected. `--max-per-source` (default 120) bounds one run; each source is imported newest first. The command uses `DATABASE_URL` from the repository-root `.env`. Review the dry-run summary before applying imports.
+
+Jobicy and Remote OK ask that they are credited as the source; imported listings keep their `job_url` pointing at the provider page.
+
+### Keeping listings fresh
+
+The API refreshes the job pool itself, so the listings do not go stale between manual imports.
+
+- In the app, open **Jobs** and use **Refresh listings now**. The panel follows the run and reloads the list when it finishes.
+- `POST /api/v1/jobs/refresh` starts a run and returns `202` immediately. It needs a verified access token, or `X-Dev-Job-Key` in development, and answers `409` while another run is in progress or during the cooldown.
+- `GET /api/v1/jobs/refresh/status` reports the latest run: counts, per-source failures and whether one is running.
+- The API process also imports on a timer (`JOB_REFRESH_INTERVAL_HOURS`, default 6 hours). The timer lives in the API process, so the API has to stay running for automatic refreshes to happen; a manual refresh works either way.
+
+Every run also closes listings that have disappeared. A job is deactivated (`is_active = false`) once no provider returns it any more, so the job list only shows roles that still exist. Only providers that answered in the run are considered, so a board that is down or comes back empty never hides its roles, and a role that is still published by a second provider stays visible. A closed role is reactivated automatically if an employer publishes it again. The command-line importer applies the same rule when it runs with `--apply`.
+
+Only one refresh runs at a time, and a run is bounded by `JOB_REFRESH_MAX_PER_SOURCE` (default 60 per source). Set `JOB_REFRESH_ENABLED=false` to turn the timer off, `JOB_REFRESH_ON_STARTUP=true` to import once at startup, and `JOB_REFRESH_MIN_INTERVAL_SECONDS` to change the manual cooldown. The command-line importer keeps working independently of these settings.
 
 ## Database migrations
 
@@ -249,5 +285,6 @@ Until then, keep the API on loopback or a private network and use synthetic data
 - [Technical stack](docs/technical-stack.md) — dependencies, settings, and persistence.
 - [Frontend](docs/frontend.md) — routes, architecture, API boundaries, and deployment notes.
 - [Authentication and ownership](docs/auth-and-ownership.md) — verified identity, ownership rules, and the development gate.
+- [Production readiness](docs/production-readiness.md) — why the workspace was demo-only, the live wiring, and the release checklist.
 - [Testing](docs/testing.md) — local QA plan for desktop and mobile.
 - [CI/CD](docs/ci-cd.md) — GitHub Actions workflows and release rules.

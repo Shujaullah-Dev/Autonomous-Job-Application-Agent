@@ -1,11 +1,21 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ArrowUpRight, Check, MapPin, Search, SlidersHorizontal } from 'lucide-react'
-import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Check,
+  MapPin,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { jobRefreshStatus, startJobRefresh } from '../lib/live'
 import { api, safeUrl, type ApiSchema, type Job } from '../lib/api'
-import { useDemo } from '../app/store'
+import { useWorkspace } from '../app/workspace'
 import { useAuth } from '../features/auth/AuthProvider'
 import { match } from '../lib/demo'
+import { useMatches } from '../lib/useMatches'
 import { Alert, Badge, EmptyState, Skeleton } from '../components/ui'
 
 function salary(job: Job) {
@@ -35,8 +45,43 @@ export function Jobs() {
   ]) {
     if (params.get(key)) queryParams.set(key, params.get(key)!)
   }
-  const { state } = useDemo()
+  const { state } = useWorkspace()
   const { demo } = useAuth()
+  const matches = useMatches()
+  const queryClient = useQueryClient()
+  const refresh = useQuery({
+    queryKey: ['job-refresh'],
+    enabled: !demo,
+    queryFn: jobRefreshStatus,
+    refetchInterval: (state) => (state.state.data?.running ? 4000 : 60000),
+  })
+  const start = useMutation({
+    mutationFn: startJobRefresh,
+    onSuccess: () => void refresh.refetch(),
+  })
+  // Reload the list once an import finishes so the new roles appear.
+  const wasRunning = useRef(false)
+  useEffect(() => {
+    const running = Boolean(refresh.data?.running)
+    if (wasRunning.current && !running) void queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    wasRunning.current = running
+  }, [refresh.data?.running, queryClient])
+  const refreshState = refresh.data
+  let refreshText = 'No import has run in this API session yet.'
+  if (refreshState?.running) {
+    refreshText = `Importing from ${refreshState.sources_total} sources: ${refreshState.sources_ok} finished, ${refreshState.created} new roles so far.`
+  } else if (refreshState?.finished_at) {
+    const failed = refreshState.failures.length
+      ? ` ${refreshState.failures.length} sources were unavailable.`
+      : ''
+    const closed = refreshState.deactivated
+      ? ` ${refreshState.deactivated} closed roles removed.`
+      : ''
+    refreshText = `Last import ${new Date(refreshState.finished_at).toLocaleString()}: ${refreshState.created} new roles from ${refreshState.sources_ok} of ${refreshState.sources_total} sources.${closed}${failed}`
+  }
+  const automatic = refreshState?.enabled
+    ? ` Automatic refresh runs every ${refreshState.interval_hours} hours while the API is running.`
+    : ' Automatic refresh is off; use the button when you want current listings.'
   const query = useQuery({
     queryKey: ['jobs', queryParams.toString()],
     enabled: !demo,
@@ -65,6 +110,11 @@ export function Jobs() {
     .sort((a, b) => (params.get('sort') === 'title' ? a.title.localeCompare(b.title) : 0))
   const jobs = demo ? demoMatches.slice((page - 1) * 6, page * 6) : query.data?.items || []
   const total = demo ? demoMatches.length : query.data?.total || 0
+  const fitScore = (job: Job) => matches.byId.get(job.id)?.score
+  const ranked =
+    params.get('sort') === 'fit' && matches.enabled
+      ? [...jobs].sort((a, b) => (fitScore(b) ?? -1) - (fitScore(a) ?? -1))
+      : jobs
   const pending = !demo && query.isPending
   const error = demo ? undefined : query.error
   return (
@@ -76,6 +126,40 @@ export function Jobs() {
         </div>
         <Badge>{total} roles</Badge>
       </div>
+      {!demo && (
+        <section className="panel refresh-panel">
+          <div>
+            <strong>Keep these listings current</strong>
+            <p>
+              {refreshText}
+              {automatic}
+            </p>
+            {start.error && <Alert kind="error">{start.error.message}</Alert>}
+          </div>
+          <button
+            className={start.isPending || refreshState?.running ? 'busy' : undefined}
+            disabled={Boolean(refreshState?.running) || start.isPending}
+            onClick={() => start.mutate()}
+          >
+            <RefreshCw size={17} />
+            {refreshState?.running ? 'Refreshing…' : 'Refresh listings now'}
+          </button>
+        </section>
+      )}
+      {!demo && !matches.enabled && (
+        <Alert>
+          Add skills to your profile — or import them from a resume — to rank these roles against
+          your experience.
+        </Alert>
+      )}
+      {matches.error && (
+        <Alert kind="error">
+          Resume ranking is unavailable right now. The job list below is unaffected.{' '}
+          <button className="text-button" onClick={() => matches.refetch()}>
+            Try again
+          </button>
+        </Alert>
+      )}
       <div className="search-toolbar">
         <label className="search-input">
           <Search size={19} />
@@ -98,6 +182,7 @@ export function Jobs() {
             onChange={(e) => change('sort', e.target.value)}
           >
             <option value="default">Source order</option>
+            <option value="fit">Best resume match</option>
             <option value="title">Title (this page)</option>
           </select>
         </label>
@@ -175,7 +260,7 @@ export function Jobs() {
         <EmptyState title="No roles found">Try a broader keyword or clear your filters.</EmptyState>
       ) : (
         <div className="jobs-grid">
-          {jobs.map((job) => (
+          {ranked.map((job) => (
             <article className="job-card" key={job.id}>
               <div className="job-card-top">
                 <span className={`company-mark color-${job.id % 6}`}>{job.company_name[0]}</span>
@@ -191,6 +276,9 @@ export function Jobs() {
               <div className="chips">
                 <Badge>{job.work_mode || 'Work mode unknown'}</Badge>
                 <Badge>{job.employment_type || 'Type unknown'}</Badge>
+                {fitScore(job) != null && (
+                  <Badge>{Math.round(fitScore(job) as number)}% resume match</Badge>
+                )}
               </div>
               <strong className="salary">{salary(job)}</strong>
               <div className="job-card-footer">
@@ -238,8 +326,9 @@ export function Jobs() {
 }
 export function JobDetail() {
   const { jobId } = useParams()
-  const { state } = useDemo()
+  const { state } = useWorkspace()
   const { demo } = useAuth()
+  const matches = useMatches()
   const query = useQuery({
     queryKey: ['job', jobId],
     enabled: /^\d+$/.test(jobId || ''),
@@ -255,6 +344,9 @@ export function JobDetail() {
       </EmptyState>
     )
   const fit = match(job, state.profile.skills)
+  const resume = matches.byId.get(job.id)
+  const matchedSkills = demo ? fit.matched : (resume?.matched_skills ?? [])
+  const missingSkills = demo ? [] : (resume?.missing_skills ?? [])
   return (
     <>
       <Link className="back-link" to="/jobs">
@@ -302,35 +394,55 @@ export function JobDetail() {
           )}
         </section>
         <aside className="panel form-section">
-          <h2>{demo ? `${fit.score}% demo fit` : 'Match explanation'}</h2>
-          {demo ? (
-            <>
-              <p>
-                Illustrative keyword score: 35 base points + 18 per matched profile skill, capped at
-                95. This is not the backend ranking.
+          <h2>
+            {demo
+              ? `${fit.score}% demo fit`
+              : resume
+                ? `${Math.round(resume.score)}% resume match`
+                : matches.data
+                  ? 'No overlap found'
+                  : 'Not scored yet'}
+          </h2>
+          <p>
+            {demo
+              ? 'Illustrative keyword score: 35 base points + 18 per matched profile skill, capped at 95. This is not the backend ranking.'
+              : resume
+                ? `Ranked by the API${matches.data?.mode ? ` in ${matches.data.mode} mode` : ''} against your profile and imported resume. Scores are ranking signals, not hiring probabilities.`
+                : matches.data
+                  ? 'This role was ranked against your profile, but none of your skills appear in the listing. That is a weak signal, not a rejection.'
+                  : 'Import your resume or add profile skills, then this role can be ranked against your experience.'}
+          </p>
+          <h3>Profile skills found in this listing</h3>
+          {matchedSkills.length ? (
+            matchedSkills.map((skill) => (
+              <p className="evidence" key={skill}>
+                <Check size={16} />
+                {skill}
               </p>
-              <h3>Evidence in the sample listing</h3>
-              {fit.matched.map((skill) => (
-                <p className="evidence" key={skill}>
-                  <Check size={16} />
-                  {skill}
-                </p>
-              ))}
-              <h3>Check before applying</h3>
-              <p className="evidence">
-                <AlertTriangle size={18} />
-                Work authorization and employer eligibility are unverified.
-              </p>
-              <Link className="button" to="/workflows">
-                Review a shortlist
-              </Link>
-            </>
+            ))
           ) : (
-            <Alert>
-              Personal matching needs verified private API access. Listing details are available
-              above.
-            </Alert>
+            <p className="evidence">No profile skills matched this listing.</p>
           )}
+          {missingSkills.length > 0 && (
+            <>
+              <h3>Skills this role asks for</h3>
+              <p className="evidence">{missingSkills.slice(0, 6).join(', ')}</p>
+            </>
+          )}
+          {resume?.cautions.length ? (
+            <p className="evidence">
+              <AlertTriangle size={18} />
+              {resume.cautions[0]}
+            </p>
+          ) : null}
+          <h3>Check before applying</h3>
+          <p className="evidence">
+            <AlertTriangle size={18} />
+            Work authorization and employer eligibility are unverified.
+          </p>
+          <Link className="button" to="/workflows">
+            Review a shortlist
+          </Link>
         </aside>
       </div>
     </>

@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -47,10 +49,27 @@ from app.api.routes.submission_handoffs import (
 )
 from app.core.config import settings
 from app.db.session import get_db
+from app.services.job_refresh import (
+    start_scheduler,
+    stop_scheduler,
+)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Run the periodic job refresh while the API is up."""
+
+    start_scheduler()
+    try:
+        yield
+    finally:
+        stop_scheduler()
+
 
 app = FastAPI(
     title=settings.app_name,
     debug=settings.debug,
+    lifespan=lifespan,
 )
 
 app.add_middleware(

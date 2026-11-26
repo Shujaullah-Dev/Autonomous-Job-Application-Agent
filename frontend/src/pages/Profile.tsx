@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, X, FileText } from 'lucide-react'
-import { useDemo } from '../app/store'
-import { useAuth } from '../features/auth/AuthProvider'
-import { Alert } from '../components/ui'
-import { api, ApiError, type ApiSchema } from '../lib/api'
+import { useWorkspace } from '../app/workspace'
+import type { Profile as ProfileRecord } from '../lib/demo'
+import { buildResumeImport, importResume, previewResume, type ResumePreview } from '../lib/live'
+import { validateResume } from '../lib/api'
+import { Alert, Skeleton } from '../components/ui'
 
 const schema = z.object({
   full_name: z.string().trim().min(1, 'Enter your name.').max(150),
@@ -17,57 +18,64 @@ const schema = z.object({
   professional_summary: z.string().max(5000),
 })
 export function Profile({ onboarding = false }: { onboarding?: boolean }) {
-  const { state, setState } = useDemo()
-  const { demo, session } = useAuth()
-  const [skills, setSkills] = useState(state.profile.skills)
+  const { state, demo, live, profileId, saveProfile, loading, error } = useWorkspace()
+  // The form keeps editable copies of the profile, so it must mount only after
+  // the saved record has arrived. Mounting earlier left the fields empty while
+  // the account already had data, and saving that form deleted the missing rows.
+  if (live && loading && !state.profile.email) return <Skeleton />
+  if (live && error && !state.profile.email)
+    return <Alert kind="error">Your profile could not be loaded. {error}</Alert>
+  // Remount the form when the account record changes so the fields always show
+  // the saved profile instead of stale sample values.
+  const signature = live ? (profileId ?? 'new') : 'demo'
+  return (
+    <ProfileForm
+      key={signature}
+      onboarding={onboarding}
+      demo={demo}
+      live={live}
+      profileId={profileId}
+      profile={state.profile}
+      saveProfile={saveProfile}
+    />
+  )
+}
+
+function ProfileForm({
+  onboarding,
+  demo,
+  live,
+  profileId,
+  profile,
+  saveProfile,
+}: {
+  onboarding: boolean
+  demo: boolean
+  live: boolean
+  profileId: string | null
+  profile: ProfileRecord
+  saveProfile: (profile: ProfileRecord) => Promise<void>
+}) {
+  const [skills, setSkills] = useState(profile.skills)
   const [skill, setSkill] = useState('')
-  const [experiences, setExperiences] = useState(state.profile.experiences)
-  const [educations, setEducations] = useState(state.profile.educations)
+  const [experiences, setExperiences] = useState(profile.experiences)
+  const [educations, setEducations] = useState(profile.educations)
   const [message, setMessage] = useState('')
+  // Saving touches the profile plus skills, experience and education, so the
+  // button reports progress until every request finished.
+  const [saving, setSaving] = useState(false)
+  const [savedCount, setSavedCount] = useState(0)
   const navigate = useNavigate()
   const {
     register,
     handleSubmit,
-    reset,
     formState: { errors },
   } = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: state.profile,
+    defaultValues: profile,
   })
-  // Re-open the record the API resolves for this account instead of re-saving
-  // sample values.
-  useEffect(() => {
-    if (demo || !session) return
-    void (async () => {
-      const storedId = sessionStorage.getItem(`job-agent-candidate-id:${session.user.id}`)
-      try {
-        let candidate: ApiSchema['CandidateResponse']
-        try {
-          // The server derives the profile from the verified account, so a
-          // stale identifier cannot select another candidate's record.
-          candidate = await api<ApiSchema['CandidateResponse']>('/api/v1/candidates/me')
-        } catch {
-          if (!storedId) return
-          candidate = await api<ApiSchema['CandidateResponse']>(`/api/v1/candidates/${storedId}`)
-        }
-        sessionStorage.setItem(`job-agent-candidate-id:${session.user.id}`, candidate.id)
-        reset({
-          full_name: candidate.full_name,
-          email: candidate.email,
-          location: candidate.location ?? '',
-          years_experience: candidate.years_experience ?? 0,
-          professional_summary: candidate.professional_summary ?? '',
-        })
-        const rows = await api<ApiSchema['SkillResponse'][]>(
-          `/api/v1/candidates/${candidate.id}/skills`,
-        )
-        setSkills(rows.map((row) => row.name))
-      } catch {
-        // A missing or unreachable record leaves the current form values intact.
-      }
-    })()
-  }, [demo, session, reset])
-  const submit = handleSubmit((values) => {
+  const submit = handleSubmit(async (values) => {
+    if (saving) return
     if (
       experiences.some(
         (row) => !row.company_name.trim() || !row.job_title.trim() || !row.start_date,
@@ -87,76 +95,25 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
       setMessage('An end date cannot be before its start date.')
       return
     }
-    if (demo) {
-      setState((s) => ({ ...s, profile: { ...values, skills, experiences, educations } }))
-      setMessage('Profile saved for this demo visit.')
+    setMessage('')
+    setSaving(true)
+    try {
+      await saveProfile({ ...values, skills, experiences, educations })
+      setSavedCount((count) => count + 1)
+      setMessage(demo ? 'Profile saved for this demo visit.' : 'Profile saved to your account.')
       if (onboarding) navigate('/resume')
-      return
+    } catch (e) {
+      setMessage((e as Error).message)
+    } finally {
+      setSaving(false)
     }
-    void (async () => {
-      try {
-        // One candidate per signed-in account, so a second user never patches
-        // the first user's record.
-        const storageKey = `job-agent-candidate-id:${session?.user.id ?? 'anonymous'}`
-        const storedId = sessionStorage.getItem(storageKey)
-        let candidate: ApiSchema['CandidateResponse'] | null = null
-        if (storedId) {
-          try {
-            candidate = await api<ApiSchema['CandidateResponse']>(`/api/v1/candidates/${storedId}`)
-          } catch (e) {
-            if (!(e instanceof ApiError) || e.status !== 404) throw e
-            candidate = null
-          }
-        }
-        if (!candidate) {
-          try {
-            // A saved account profile already exists, so reuse it instead of
-            // creating a second one.
-            candidate = await api<ApiSchema['CandidateResponse']>('/api/v1/candidates/me')
-          } catch (e) {
-            if (!(e instanceof ApiError) || e.status !== 404) throw e
-            candidate = null
-          }
-        }
-        candidate = candidate
-          ? await api<ApiSchema['CandidateResponse']>(`/api/v1/candidates/${candidate.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(values),
-            })
-          : await api<ApiSchema['CandidateResponse']>('/api/v1/candidates', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...values, phone: null }),
-            })
-        sessionStorage.setItem(storageKey, candidate.id)
-        const stored = await api<ApiSchema['SkillResponse'][]>(
-          `/api/v1/candidates/${candidate.id}/skills`,
-        )
-        const wanted = new Set(skills.map((name) => name.toLowerCase()))
-        for (const row of stored) {
-          if (!wanted.has(row.name.toLowerCase()))
-            await api(`/api/v1/candidates/${candidate.id}/skills/${row.id}`, {
-              method: 'DELETE',
-            })
-        }
-        const saved = new Set(stored.map((row) => row.name.toLowerCase()))
-        for (const name of skills) {
-          if (!saved.has(name.toLowerCase()))
-            await api(`/api/v1/candidates/${candidate.id}/skills`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name }),
-            })
-        }
-        setState((s) => ({ ...s, profile: { ...values, skills, experiences, educations } }))
-        setMessage('Profile saved to the API.')
-        if (onboarding) navigate('/resume')
-      } catch (e) {
-        setMessage((e as Error).message)
-      }
-    })()
   })
+  const saveLabel = onboarding ? 'Save and review resume' : 'Save profile'
+  const helperText = saving
+    ? 'Saving your profile, skills, work history and education…'
+    : demo
+      ? 'Demo changes are cleared on reload.'
+      : 'Saving updates your account profile and its skills, experience, and education.'
   return (
     <>
       <div className="page-heading">
@@ -176,9 +133,32 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
           <span>3. Find a role</span>
         </div>
       )}
+      {live && (
+        <ResumeImportPanel
+          profileId={profileId}
+          onImported={(records) => {
+            // Merge, never replace: saving the profile syncs removals to the API.
+            setSkills((current) => [
+              ...new Map(
+                [...current, ...records.skills].map((name): [string, string] => [
+                  name.toLowerCase(),
+                  name,
+                ]),
+              ).values(),
+            ])
+            setExperiences((current) => mergeRows(current, records.experiences, experienceKey))
+            setEducations((current) => mergeRows(current, records.educations, educationKey))
+          }}
+        />
+      )}
       <form className="profile-form" onSubmit={submit} noValidate>
         {message && (
-          <Alert kind={message.startsWith('Profile saved') ? 'success' : 'error'}>{message}</Alert>
+          <Alert
+            key={`profile-message-${savedCount}`}
+            kind={message.startsWith('Profile saved') ? 'success' : 'error'}
+          >
+            {message}
+          </Alert>
         )}
         <section className="panel form-section">
           <h2>The basics</h2>
@@ -346,11 +326,230 @@ export function Profile({ onboarding = false }: { onboarding?: boolean }) {
             </fieldset>
           ))}
         </section>
+        {saving && (
+          <div
+            className="save-progress"
+            role="progressbar"
+            aria-label="Saving your profile"
+            aria-valuetext="Saving"
+          />
+        )}
         <div className="form-actions">
-          <small>Demo changes are cleared on reload.</small>
-          <button>{onboarding ? 'Save and review resume' : 'Save profile'}</button>
+          <small aria-live="polite">{helperText}</small>
+          <button className={saving ? 'busy' : undefined} disabled={saving} aria-busy={saving}>
+            {saving ? (
+              <>
+                <span className="spinner" aria-hidden="true" />
+                Saving…
+              </>
+            ) : (
+              saveLabel
+            )}
+          </button>
         </div>
       </form>
     </>
+  )
+}
+
+const experienceKey = (row: { company_name: string; job_title: string; start_date: string }) =>
+  `${row.company_name.trim().toLowerCase()}|${row.job_title.trim().toLowerCase()}|${row.start_date.slice(0, 10)}`
+const educationKey = (row: { institution: string; degree: string; start_date: string }) =>
+  `${row.institution.trim().toLowerCase()}|${row.degree.trim().toLowerCase()}|${row.start_date.slice(0, 10)}`
+
+function mergeRows<T>(current: T[], incoming: T[], key: (row: T) => string): T[] {
+  const seen = new Set(current.map(key))
+  return [
+    ...current,
+    ...incoming.filter((row) => {
+      const id = key(row)
+      if (seen.has(id)) return false
+      seen.add(id)
+      return true
+    }),
+  ]
+}
+
+type ImportedRecords = {
+  skills: string[]
+  experiences: ProfileRecord['experiences']
+  educations: ProfileRecord['educations']
+}
+
+/**
+ * Resume upload for the profile itself. The preview endpoint only reads the
+ * file; nothing is written until the account holder approves the details.
+ */
+function ResumeImportPanel({
+  profileId,
+  onImported,
+}: {
+  profileId: string | null
+  onImported: (records: ImportedRecords) => void
+}) {
+  const { refresh } = useWorkspace()
+  const [preview, setPreview] = useState<ResumePreview | null>(null)
+  const [skills, setSkills] = useState('')
+  const [approved, setApproved] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+
+  async function analyze(chosen?: File) {
+    if (!chosen) return
+    setPreview(null)
+    setApproved(false)
+    setMessage('')
+    const problem = validateResume(chosen)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    if (!profileId) {
+      setError('Save this profile once, then analyze your resume here.')
+      return
+    }
+    setError('')
+    setBusy(true)
+    try {
+      const result = await previewResume(profileId, chosen)
+      setPreview(result)
+      setSkills((result.skills ?? []).join(', '))
+    } catch (failure) {
+      setError((failure as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function importRecords() {
+    if (!preview || !profileId) return
+    const names = skills
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+    const { payload, skipped } = buildResumeImport(preview, names)
+    if (!payload.skills.length && !payload.experiences.length && !payload.educations.length) {
+      setError('Nothing could be imported. Add at least one skill, or fill in the dates below.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const result = await importResume(profileId, payload)
+      await refresh()
+      onImported({
+        skills: payload.skills,
+        experiences: payload.experiences.map((row) => ({
+          company_name: row.company_name,
+          job_title: row.job_title,
+          start_date: row.start_date,
+          end_date: row.end_date ?? '',
+        })),
+        educations: payload.educations.map((row) => ({
+          institution: row.institution,
+          degree: row.degree,
+          start_date: row.start_date,
+          end_date: row.end_date ?? '',
+        })),
+      })
+      setApproved(false)
+      setMessage(
+        `Added ${result.skills.created} skill${result.skills.created === 1 ? '' : 's'}, ${result.experiences.created} role${result.experiences.created === 1 ? '' : 's'} and ${result.educations.created} education entr${result.educations.created === 1 ? 'y' : 'ies'}. ${result.skills.skipped + result.experiences.skipped + result.educations.skipped} already on your profile were skipped.${skipped ? ` ${skipped} entr${skipped === 1 ? 'y' : 'ies'} with unclear dates still need to be added below.` : ''}`,
+      )
+    } catch (failure) {
+      setError((failure as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Only shown when the AI parser was not used, so the account holder knows
+  // why the details are rougher and that a fallback ran.
+  const parserNotice =
+    preview?.parser_used === 'local'
+      ? ((preview.warnings ?? []).find((warning) => /AI parser/i.test(warning)) ??
+        'The AI parser is unavailable, so local extraction was used instead.')
+      : ''
+
+  return (
+    <section className="panel form-section">
+      <div className="section-heading">
+        <div>
+          <h2>Import from your resume</h2>
+          <p>
+            Upload a PDF or DOCX. The API reads it and suggests skills, roles and education. Only the
+            details you approve are saved.
+          </p>
+        </div>
+        <FileText size={20} />
+      </div>
+      {!profileId && <Alert>Save this profile once to enable resume import.</Alert>}
+      {error && <Alert kind="error">{error}</Alert>}
+      {message && <Alert kind="success">{message}</Alert>}
+      <div className="inline-form">
+        <label>
+          Resume file (PDF or DOCX, up to 5 MB)
+          <input
+            type="file"
+            accept=".pdf,.docx"
+            disabled={!profileId || busy}
+            onChange={(event) => void analyze(event.target.files?.[0])}
+          />
+        </label>
+        {busy && <small>{preview ? 'Importing…' : 'Reading the file with the AI parser…'}</small>}
+      </div>
+      {preview && (
+        <>
+          {parserNotice && (
+            <Alert kind={preview.fallback_used ? 'error' : 'info'}>{parserNotice}</Alert>
+          )}
+          <p>
+            <strong>{preview.parser_used === 'groq' ? 'AI extraction' : 'Local extraction'}</strong>
+            {preview.fallback_used ? ' (fallback used)' : ''} found{' '}
+            {(preview.skills ?? []).length} skills, {(preview.experiences ?? []).length} roles and{' '}
+            {(preview.educations ?? []).length} education entries.
+          </p>
+          {(preview.experiences ?? []).length > 0 && (
+            <p className="evidence">
+              {(preview.experiences ?? [])
+                .map((row) => [row.job_title, row.company_name].filter(Boolean).join(' at '))
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
+          {(preview.educations ?? []).length > 0 && (
+            <p className="evidence">
+              {(preview.educations ?? [])
+                .map((row) => [row.degree, row.institution].filter(Boolean).join(' — '))
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
+          <label>
+            Skills to import (comma separated)
+            <textarea
+              rows={3}
+              value={skills}
+              onChange={(event) => {
+                setSkills(event.target.value)
+                setMessage('')
+              }}
+            />
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={approved}
+              onChange={(event) => setApproved(event.target.checked)}
+            />
+            I reviewed these details and want to add them to my profile.
+          </label>
+          <button type="button" disabled={!approved || busy} onClick={importRecords}>
+            {busy ? 'Importing…' : 'Add reviewed details'}
+          </button>
+        </>
+      )}
+    </section>
   )
 }
