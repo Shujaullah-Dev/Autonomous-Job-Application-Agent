@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from app.core.config import settings
 from app.services.migration_audit import audit_migrations
 from app.services.security_audit import audit_candidate_routes
 
@@ -51,8 +52,10 @@ def assess_release(
 
     # Presence of InMemorySaver is evidence of a non-durable
     # default workflow; this is not a full runtime proof.
+    # A configured PostgreSQL checkpoint URL replaces the in-process saver.
     uses_memory_checkpoint = (
         "InMemorySaver" in checkpoint_source
+        and not settings.langgraph_checkpoint_url
     )
 
     blockers: list[str] = []

@@ -1,11 +1,14 @@
 
 """Ranked candidate job recommendations."""
 
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Annotated, Literal
 
 from app.api.routes.job_matches import require_matching_profile
-from app.api.routes.jobs import require_dev_write_key
+from app.core.auth import require_candidate_owner, require_private_access
 from app.db.session import get_db
 from app.models.candidate import CandidateProfile
 from app.schemas.job import WorkMode
@@ -37,8 +40,44 @@ from sqlalchemy.orm import Session
 router = APIRouter(
     prefix="/api/v1/candidates",
     tags=["Job Recommendations"],
-    dependencies=[Depends(require_dev_write_key)],
+    dependencies=[
+        Depends(require_private_access),
+        Depends(require_candidate_owner),
+    ],
 )
+
+# Loading the local sentence-transformer model can take minutes on a cold
+# machine (and never finish when the model cannot be downloaded). The request
+# must not hang, so the search waits a bounded time and then ranks with rules.
+EMBEDDING_TIMEOUT_SECONDS = 8.0
+EMBEDDING_RETRY_SECONDS = 900.0
+
+_embedding_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="embeddings")
+_embedding_blocked_until = 0.0
+
+
+def query_vector_for(document: str) -> list[float] | None:
+    """Embed the candidate document, or return ``None`` when unavailable."""
+
+    global _embedding_blocked_until
+
+    if time.monotonic() < _embedding_blocked_until:
+        return None
+
+    future = _embedding_executor.submit(embed_texts, [document])
+
+    try:
+        return future.result(timeout=EMBEDDING_TIMEOUT_SECONDS)[0]
+
+    except FutureTimeoutError:
+        # Stop trying for a while so repeated page loads stay responsive.
+        _embedding_blocked_until = time.monotonic() + EMBEDDING_RETRY_SECONDS
+        future.cancel()
+        return None
+
+    except (EmbeddingError, ValueError):
+        _embedding_blocked_until = time.monotonic() + EMBEDDING_RETRY_SECONDS
+        return None
 
 
 @router.get(
@@ -154,12 +193,11 @@ def get_candidate_recommendations(
             summary=profile.professional_summary,
         )
 
-        try:
-            query_vector = embed_texts([document])[0]
+        query_vector = query_vector_for(document)
 
-        except EmbeddingError:
+        if query_vector is None:
             embedding_warning = (
-                "Local embedding model unavailable; "
+                "Local embedding model unavailable or too slow; "
                 "rule-based fallback was used."
             )
 

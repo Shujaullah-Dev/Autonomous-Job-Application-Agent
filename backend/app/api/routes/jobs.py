@@ -2,6 +2,7 @@
 import secrets
 from typing import Annotated
 
+from app.core.auth import require_private_access
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.job import Job
@@ -10,6 +11,14 @@ from app.schemas.job import (
     JobListResponse,
     JobRead,
     WorkMode,
+)
+from app.schemas.job_refresh import (
+    JobRefreshStartResponse,
+    JobRefreshStatus,
+)
+from app.services.job_refresh import (
+    refresh_status,
+    start_refresh,
 )
 from app.services.job_search import search_jobs
 from fastapi import (
@@ -118,6 +127,53 @@ def list_jobs(
         limit=limit,
         offset=offset,
         items=items,
+    )
+
+
+@router.get(
+    "/refresh/status",
+    response_model=JobRefreshStatus,
+)
+def job_refresh_status() -> JobRefreshStatus:
+    """Report the latest import run and whether one is in progress."""
+
+    return JobRefreshStatus(**refresh_status())
+
+
+@router.post(
+    "/refresh",
+    response_model=JobRefreshStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_private_access)],
+)
+def trigger_job_refresh(
+    max_per_source: Annotated[
+        int | None, Query(ge=1, le=500)
+    ] = None,
+) -> JobRefreshStartResponse:
+    """Start importing current listings in the background.
+
+    The request returns immediately; poll the status route to follow the run.
+    """
+
+    started, reason, status_payload = start_refresh(
+        "manual",
+        max_per_source=max_per_source,
+    )
+
+    if not started:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "reason": reason,
+                "status": status_payload,
+            },
+        )
+
+    return JobRefreshStartResponse(
+        started=True,
+        reason=reason,
+        status=JobRefreshStatus(**status_payload),
     )
 
 

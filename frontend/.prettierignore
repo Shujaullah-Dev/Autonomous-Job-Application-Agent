@@ -1,0 +1,7 @@
+dist
+node_modules
+test-results
+playwright-report
+package-lock.json
+src/lib/openapi.json
+src/lib/api-types.ts

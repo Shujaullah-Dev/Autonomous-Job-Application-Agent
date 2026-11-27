@@ -233,4 +233,6 @@ def test_matching_disabled_in_production(
         },
     )
 
-    assert response.status_code == 403
+    # Outside development the development key is not an identity, so the
+    # API answers 401 and asks for a verified access token.
+    assert response.status_code == 401

@@ -46,6 +46,7 @@ build/
 # Temporary files
 tmp/
 temp/
+docs/audit/
 
 # Docker data
 docker-data/

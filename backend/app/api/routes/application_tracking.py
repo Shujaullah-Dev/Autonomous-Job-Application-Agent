@@ -5,7 +5,7 @@ import uuid
 from typing import Annotated
 
 from app.api.routes import job_workflows
-from app.api.routes.jobs import require_dev_write_key
+from app.core.auth import require_candidate_owner, require_private_access
 from app.db.session import get_db
 from app.models.application import Application
 from app.schemas.application_tracking import (
@@ -49,7 +49,10 @@ from sqlalchemy.orm import Session
 router = APIRouter(
     prefix="/api/v1/candidates",
     tags=["Application Tracking"],
-    dependencies=[Depends(require_dev_write_key)],
+    dependencies=[
+        Depends(require_private_access),
+        Depends(require_candidate_owner),
+    ],
 )
 
 

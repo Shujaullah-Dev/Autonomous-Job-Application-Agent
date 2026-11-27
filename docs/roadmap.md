@@ -13,14 +13,15 @@ This roadmap describes code that exists today. Configuration placeholders and pr
 | Education | Implemented | Create, list, update, and delete |
 | Resume preview | Implemented | PDF/DOCX validation, text extraction, local analysis, optional Groq |
 | Reviewed resume import | Implemented | Requires `approved: true`; skips duplicates |
-| Job persistence | Model only | No job API or ingestion |
+| Job persistence | Implemented | Greenhouse and Lever ingestion with deduplication; search, detail, and key-gated create routes |
 | Database migrations | Configured, needs repair | Two revisions create the candidate table; model and migration differ |
-| Tests | Initial coverage | Unit/schema and SQLite-backed resume-import coverage; migration chain needs tests |
-| Job search and recommendations | Not implemented | No source adapters, ingestion, or matching |
-| Application preparation and tracking | Not implemented | No generation, application, or interview models/routes |
-| Authentication and authorization | Not implemented | API endpoints are unauthenticated |
-| Frontend | Not implemented | No frontend project |
-| Notifications, calendar, deployment, CI | Not implemented | No integrations or infrastructure configuration |
+| Tests | Implemented | 443 backend tests plus frontend lint, type, unit, build, and browser checks |
+| Job search and recommendations | Implemented | Filters, pagination, matching, hybrid matching, and explanations |
+| Application preparation and tracking | Implemented | Workflows, drafts, revisions, status history, handoffs, follow-ups, and interviews |
+| Authentication and authorization | Implemented backend | Supabase JWT verification, candidate `owner_id`, `/api/v1/candidates/me`, ownership on every candidate-scoped router; see `docs/auth-and-ownership.md` |
+| Durable workflow checkpoints | Implemented, needs a PostgreSQL database | `LANGGRAPH_CHECKPOINT_URL` selects `PostgresSaver`; unset means the in-process saver |
+| Frontend | Implemented | React and Vite workspace with demo journey, live job reads, and candidate profile writes |
+| Notifications, calendar, deployment, CI | Partially implemented | Interview notifications, `.ics` export, Docker packaging, and four GitHub Actions workflows; no hosted deployment |
 
 ## Recommended priorities
 
@@ -33,8 +34,9 @@ This roadmap describes code that exists today. Configuration placeholders and pr
 
 ### 2. Add access control before real user data
 
-- Define user identity and profile ownership.
-- Implement authentication and authorization on every candidate-scoped endpoint.
+- ~~Define user identity and profile ownership.~~ Done: `candidate_profiles.owner_id` and `/api/v1/candidates/me`.
+- ~~Implement authentication and authorization on every candidate-scoped endpoint.~~ Done: verified JWTs plus `require_candidate_owner`; two-account tests exist.
+- Configure `SUPABASE_URL`/JWKS values and run the two-account checks on staging before real user data is stored.
 - Define privacy, retention, logging, and deletion policies for profile and resume data.
 - Restrict deployment exposure until these controls exist.
 
@@ -71,7 +73,9 @@ Candidate profile and reviewed resume data
     → application and interview tracking
 ```
 
-Only profile management and resume review/import are currently implemented. Do not bypass provider terms, access controls, or anti-bot protections. Consequential actions must remain under user control.
+Profile management, resume review/import, job discovery, matching, workflows, application tracking, follow-ups, interviews, and notifications are implemented. Private browser access to those later features, and verified candidate ownership, are not. Do not bypass provider terms, access controls, or anti-bot protections. Consequential actions must remain under user control.
+
+Local verification steps, including desktop and mobile testing, are in `docs/testing.md`.
 
 ## Definition of done
 

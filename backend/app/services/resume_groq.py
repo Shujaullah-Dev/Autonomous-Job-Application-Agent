@@ -277,7 +277,7 @@ def extract_groq(text: str):
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0,
-        "max_completion_tokens": 3000,
+        "max_completion_tokens": settings.groq_max_completion_tokens,
     }
 
     try:
@@ -323,6 +323,11 @@ def extract_groq(text: str):
         data = response.json()
         choice = data["choices"][0]
 
+        if choice.get("finish_reason") == "length":
+            # The token budget was exhausted mid-JSON, often because a
+            # reasoning model used it on hidden reasoning first.
+            raise GroqUnavailable("response_truncated")
+
         if choice.get("finish_reason") != "stop":
             raise ValueError("Incomplete AI response")
 
@@ -333,6 +338,8 @@ def extract_groq(text: str):
 
         result = AIResume.model_validate_json(content)
 
+    except GroqUnavailable:
+        raise
     except (
         ValueError, ValidationError,
         KeyError, IndexError, TypeError,
