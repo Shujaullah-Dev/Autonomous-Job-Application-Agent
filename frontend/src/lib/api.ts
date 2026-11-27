@@ -57,15 +57,20 @@ export async function api<T>(
     accessToken ?? (await supabase?.auth.getSession())?.data.session?.access_token
   if (currentToken) headers.set('Authorization', `Bearer ${currentToken}`)
   let response: Response
+  const signal = options.signal ?? AbortSignal.timeout(15000)
   try {
     response = await fetch(`${baseUrl()}${path}`, {
       ...options,
       headers,
-      signal: options.signal ?? AbortSignal.timeout(15000),
+      signal,
       credentials: 'omit',
     })
   } catch (error) {
+    // A caller-supplied signal means the request was cancelled on purpose.
     if (options.signal?.aborted) throw error
+    if (signal.aborted) {
+      throw new ApiError(0, 'This request took too long. Try again in a moment.')
+    }
     throw new ApiError(0, 'Cannot reach the API. Check your connection and try again.')
   }
   if (!response.ok) throw new ApiError(response.status, errorMessage(response.status))

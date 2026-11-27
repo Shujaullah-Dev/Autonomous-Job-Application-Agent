@@ -123,6 +123,16 @@ export function ApplicationDetail() {
   const [action, setAction] = useState<Status | 'handoff' | null>(null)
   const [reviewed, setReviewed] = useState(false)
   const [manual, setManual] = useState(false)
+  // This screen can render before the live workspace has loaded the record, so
+  // the editable copy is filled the first time that record is available rather
+  // than showing an empty letter that could then be saved over the stored
+  // draft.
+  const [loadedId, setLoadedId] = useState<string | null>(null)
+  if (application && loadedId !== application.id) {
+    setLoadedId(application.id)
+    setLetter(application.letter)
+    setRevision(application.revision)
+  }
   if (live && loading && !application) return <Skeleton />
   if (!application)
     return (

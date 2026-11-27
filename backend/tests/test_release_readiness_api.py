@@ -10,7 +10,13 @@ from fastapi.testclient import TestClient
 
 HEADERS = {"X-Dev-Job-Key": "day24-test-key"}
 
-def test_security_auditor_detects_unguarded_routes():
+def test_security_auditor_detects_unguarded_routes(monkeypatch):
+    # The audit reports whether token verification is configured, so the
+    # result must not depend on the developer's local .env file.
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_jwks_url", "")
+    monkeypatch.setattr(settings, "supabase_jwt_secret", "")
+
     sample = FastAPI()
 
     @sample.get("/api/v1/candidates/{candidate_id}")
@@ -55,6 +61,9 @@ def test_migration_audit_endpoint(monkeypatch):
 
 def test_release_readiness_reports_current_blockers(monkeypatch):
     monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_jwks_url", "")
+    monkeypatch.setattr(settings, "supabase_jwt_secret", "")
     monkeypatch.setattr(
         settings,
         "dev_job_write_key",
@@ -151,7 +160,11 @@ def test_production_mode_rejects_audit(monkeypatch):
     assert response.status_code == 403
 
 
-def test_auditor_detects_included_router_routes():
+def test_auditor_detects_included_router_routes(monkeypatch):
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_jwks_url", "")
+    monkeypatch.setattr(settings, "supabase_jwt_secret", "")
+
     from app.api.routes.jobs import require_dev_write_key
     from app.services.security_audit import (
         audit_candidate_routes,

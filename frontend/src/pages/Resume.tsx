@@ -34,16 +34,18 @@ export function Resume() {
   }
 
   async function analyze() {
-    if (!file) {
-      setError('Choose a PDF or DOCX file first.')
-      return
-    }
+    // The sample review is a fixed demo fixture, so it never needs a file.
     if (demo) {
+      setError('')
       setSample(true)
       setSkills(sampleSkills.join(', '))
       setPreview(null)
       setReviewed(false)
       setSaved(false)
+      return
+    }
+    if (!file) {
+      setError('Choose a PDF or DOCX file first.')
       return
     }
     if (!profileId) {

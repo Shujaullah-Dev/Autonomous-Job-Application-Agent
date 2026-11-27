@@ -8,6 +8,32 @@ import { supabase, useAuth } from '../features/auth/AuthProvider'
 import { Alert } from '../components/ui'
 
 const schema = z.object({ email: z.email('Enter a valid email address.'), password: z.string() })
+
+/**
+ * Translate the auth service's error code into an instruction the reader can
+ * act on. The generic fallback is used only for codes we do not recognise.
+ */
+function authFailure(error: { code?: string; status?: number } | null, mode: string): string {
+  const known: Record<string, string> = {
+    email_address_invalid:
+      'That email address was rejected. Use an address you can receive mail at.',
+    email_exists: 'An account already exists for this email. Sign in instead.',
+    user_already_exists: 'An account already exists for this email. Sign in instead.',
+    weak_password: 'Choose a stronger password with at least 8 characters.',
+    signup_disabled:
+      'New accounts are disabled for this project. Ask the owner to enable sign-ups.',
+    email_not_confirmed: 'Confirm your email address from the link we sent, then sign in.',
+    invalid_credentials: 'Email or password is incorrect.',
+    over_email_send_rate_limit: 'Too many emails were sent. Wait a few minutes and try again.',
+    over_request_rate_limit: 'Too many attempts. Wait a moment and try again.',
+    same_password: 'Choose a password you have not used for this account.',
+  }
+  const message = error?.code ? known[error.code] : undefined
+  if (message) return message
+  if (mode === 'login') return 'Could not sign in. Check your email and password, then try again.'
+  if (mode === 'forgot-password') return 'Could not send a recovery link. Try again later.'
+  return 'Could not create the account. Check your details or try again later.'
+}
 export function AuthPage({ mode }: { mode: 'login' | 'signup' | 'forgot-password' | 'callback' }) {
   const { session, loading, enterDemo } = useAuth()
   const [message, setMessage] = useState('')
@@ -50,7 +76,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' | 'forgot-password
             ? await supabase.auth.resetPasswordForEmail(values.email, { redirectTo: redirect })
             : await supabase.auth.signInWithPassword(values)
       if (result.error) {
-        setError('Could not complete this request. Check your details or try again later.')
+        setError(authFailure(result.error, mode))
+        return
+      }
+      if (mode === 'signup' && 'session' in result.data && result.data.session) {
+        // Some projects confirm the address automatically; the session is
+        // already usable, so open the workspace instead of the inbox notice.
+        navigate('/dashboard')
         return
       }
       if (mode === 'login') {

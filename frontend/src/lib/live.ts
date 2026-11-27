@@ -8,6 +8,9 @@ const jsonRequest = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 })
 const candidatePath = (candidateId: string) => `/api/v1/candidates/${candidateId}`
+// Shortlist endpoints rank the whole active-job pool, which takes far longer
+// than a normal record request on a large job index.
+const slowSignal = () => AbortSignal.timeout(120000)
 
 export const emptyProfile = (): Profile => ({
   full_name: '',
@@ -162,6 +165,16 @@ export function rememberWorkflow(userId: string, workflowId: string): void {
   }
 }
 
+/** Drop a stored shortlist the API no longer has, so it stops being requested. */
+function forgetWorkflow(userId: string, workflowId: string): void {
+  const ids = readWorkflowIds(userId).filter((id) => id !== workflowId)
+  try {
+    localStorage.setItem(workflowKey(userId), JSON.stringify(ids))
+  } catch {
+    // Storage can be unavailable in private modes; the id is simply skipped.
+  }
+}
+
 export async function loadLiveState(
   candidateId: string | null,
   userId: string,
@@ -296,7 +309,12 @@ export async function loadLiveState(
     workflowIds.map((workflowId) =>
       api<ApiSchema['WorkflowResponse']>(
         `${candidatePath(candidateId)}/workflows/${workflowId}`,
-      ).catch(() => null),
+      ).catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 404) {
+          forgetWorkflow(userId, workflowId)
+        }
+        return null
+      }),
     ),
   )
   state.workflows = workflowRows
@@ -336,7 +354,10 @@ export async function startWorkflow(
     `${candidatePath(candidateId)}/workflows`,
     // The ranker's default threshold (50) is above the scores most profiles
     // reach, which made every shortlist empty. Mirror the ranked job list.
-    jsonRequest('POST', { work_mode: workMode || null, min_score: 0, limit: 5 }),
+    {
+      ...jsonRequest('POST', { work_mode: workMode || null, min_score: 0, limit: 5 }),
+      signal: slowSignal(),
+    },
   )
   rememberWorkflow(userId, workflow.workflow_id)
   return workflow.workflow_id
@@ -349,6 +370,7 @@ export async function reviewWorkflow(
 ): Promise<void> {
   await api(`${candidatePath(candidateId)}/workflows/${workflowId}/review`, {
     ...jsonRequest('POST', { decision, approved_job_ids: approvedJobIds }),
+    signal: slowSignal(),
   })
 }
 export async function createTrackedApplication(
@@ -743,13 +765,23 @@ export async function importResume(
 export async function loadMatches(candidateId: string, signal?: AbortSignal): Promise<MatchResult> {
   const request = (mode: 'hybrid' | 'rules') => {
     const params = new URLSearchParams({ mode, min_score: '0', limit: '50' })
+    // Ranking evaluates hundreds of listings, so it needs more than the default
+    // 15-second budget before the request is treated as failed.
+    const budget = AbortSignal.timeout(45000)
     return api<ApiSchema['RecommendationResponse']>(
       `${candidatePath(candidateId)}/recommendations?${params}`,
-      { signal },
+      { signal: signal ? AbortSignal.any([signal, budget]) : budget },
     )
   }
-  const result = await request('hybrid').catch((error: unknown) => {
-    if (error instanceof ApiError && error.status === 503) return request('rules')
+  const result = await request('hybrid').catch(async (error: unknown) => {
+    if (signal?.aborted) throw error
+    // Semantic search is optional; any ranking failure still leaves the
+    // rule-based scores, which the job list depends on.
+    if (
+      error instanceof ApiError ||
+      (error instanceof DOMException && error.name === 'TimeoutError')
+    )
+      return request('rules')
     throw error
   })
   return {

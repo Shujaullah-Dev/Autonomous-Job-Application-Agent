@@ -65,6 +65,13 @@ function ProfileForm({
   // button reports progress until every request finished.
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
+  // Enter in the skill field adds the skill instead of submitting the profile.
+  const addSkill = () => {
+    const next = skill.trim()
+    if (!next) return
+    if (!skills.some((s) => s.toLowerCase() === next.toLowerCase())) setSkills([...skills, next])
+    setSkill('')
+  }
   const navigate = useNavigate()
   const {
     register,
@@ -207,18 +214,18 @@ function ProfileForm({
           <div className="inline-form">
             <label>
               New skill
-              <input value={skill} maxLength={100} onChange={(e) => setSkill(e.target.value)} />
+              <input
+                value={skill}
+                maxLength={100}
+                onChange={(e) => setSkill(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return
+                  event.preventDefault()
+                  addSkill()
+                }}
+              />
             </label>
-            <button
-              type="button"
-              className="secondary"
-              disabled={!skill.trim()}
-              onClick={() => {
-                if (!skills.some((s) => s.toLowerCase() === skill.trim().toLowerCase()))
-                  setSkills([...skills, skill.trim()])
-                setSkill('')
-              }}
-            >
+            <button type="button" className="secondary" disabled={!skill.trim()} onClick={addSkill}>
               <Plus size={16} />
               Add skill
             </button>
@@ -478,8 +485,8 @@ function ResumeImportPanel({
         <div>
           <h2>Import from your resume</h2>
           <p>
-            Upload a PDF or DOCX. The API reads it and suggests skills, roles and education. Only the
-            details you approve are saved.
+            Upload a PDF or DOCX. The API reads it and suggests skills, roles and education. Only
+            the details you approve are saved.
           </p>
         </div>
         <FileText size={20} />
@@ -506,8 +513,8 @@ function ResumeImportPanel({
           )}
           <p>
             <strong>{preview.parser_used === 'groq' ? 'AI extraction' : 'Local extraction'}</strong>
-            {preview.fallback_used ? ' (fallback used)' : ''} found{' '}
-            {(preview.skills ?? []).length} skills, {(preview.experiences ?? []).length} roles and{' '}
+            {preview.fallback_used ? ' (fallback used)' : ''} found {(preview.skills ?? []).length}{' '}
+            skills, {(preview.experiences ?? []).length} roles and{' '}
             {(preview.educations ?? []).length} education entries.
           </p>
           {(preview.experiences ?? []).length > 0 && (

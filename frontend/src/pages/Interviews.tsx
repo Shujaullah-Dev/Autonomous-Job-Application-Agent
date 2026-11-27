@@ -30,7 +30,12 @@ export function Interviews() {
     status: 'cancelled' | 'completed'
   } | null>(null)
   const [view, setView] = useState('list')
-  const eligible = state.applications.filter((a) => ['submitted', 'interview'].includes(a.status))
+  // The API only accepts an interview once the application is in interview
+  // status, so live scheduling offers only those records. The sample journey
+  // owns its own state and keeps both statuses available.
+  const eligible = state.applications.filter((a) =>
+    (demo ? ['submitted', 'interview'] : ['interview']).includes(a.status),
+  )
   const rows = state.interviews
     .filter((i) => !interviewId || i.id === interviewId)
     .sort((a, b) => a.start.localeCompare(b.start))
@@ -199,7 +204,7 @@ export function Interviews() {
         <EmptyState
           title={interviewId ? 'Interview unavailable' : 'Your next conversation goes here'}
         >
-          Schedule an interview for an application you have reported as submitted.
+          Move a reported submission to Interview status in Applications, then add the time here.
         </EmptyState>
       )}
       <Modal
@@ -306,7 +311,10 @@ export function Interviews() {
             <button>{editing ? 'Save schedule' : 'Schedule interview'}</button>
           </form>
         ) : (
-          <Alert>Report a submission first to schedule an interview for that application.</Alert>
+          <Alert>
+            No application is in interview status yet. Open a reported submission in Applications
+            and move it to Interview, then schedule the conversation here.
+          </Alert>
         )}
       </Modal>
       <Modal
